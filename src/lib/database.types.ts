@@ -473,6 +473,50 @@ export interface Database {
           created_at?: string
         }
       }
+      marcos: {
+        Row: {
+          id: string
+          turma_id: string
+          tipo: 'prova' | 'entrega' | 'aviso' | 'simulado' | 'evento'
+          titulo: string
+          descricao: string | null
+          data: string
+          data_fim: string | null
+          cor: string | null
+          bloqueado: boolean
+          vinculos_atividades: string[]
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          turma_id: string
+          tipo: 'prova' | 'entrega' | 'aviso' | 'simulado' | 'evento'
+          titulo: string
+          descricao?: string | null
+          data: string
+          data_fim?: string | null
+          cor?: string | null
+          bloqueado?: boolean
+          vinculos_atividades?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          turma_id?: string
+          tipo?: 'prova' | 'entrega' | 'aviso' | 'simulado' | 'evento'
+          titulo?: string
+          descricao?: string | null
+          data?: string
+          data_fim?: string | null
+          cor?: string | null
+          bloqueado?: boolean
+          vinculos_atividades?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+      }
       configuracoes: {
         Row: {
           id: string

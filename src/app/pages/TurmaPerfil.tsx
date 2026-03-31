@@ -1,4 +1,25 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router';
+import {
+  Users, Calendar, BookOpen, ListChecks, FileText,
+  TrendingUp, TrendingDown, Minus, UserCheck, UserX, Clock,
+  Search, Plus, ArrowLeft, Loader2, Sparkles, ArrowUpDown,
+  Pencil, Trash2,
+} from 'lucide-react';
+import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
+import { Modal } from '../components/ui/Modal';
+import { Textarea } from '../components/ui/Textarea';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { toast } from '../components/ui/Toast';
+import { ModalAnaliseTurma } from '../components/turma/ModalAnaliseTurma';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useDados } from '../../contexts/DadosContext';
+import type { Marco } from '../../types';
 import { analisarTurma, AnaliseTurmaResponse, sugerirIntervencoes, SugerirIntervencoesResponse } from '../services/openaiService';
 
 type Aba = 'alunos' | 'linha-do-tempo' | 'planos' | 'atividades' | 'boletim';
@@ -36,6 +57,7 @@ export default function TurmaPerfil() {
   const [erroIntervencoes, setErroIntervencoes] = useState<string | null>(null);
 
   const turma = {
+    id: id || '',
     nome: 'Matemática - 8º Ano',
     codigo: 'MAT-8A-2024',
     nAlunos: 28,
@@ -247,7 +269,7 @@ export default function TurmaPerfil() {
       {/* Tab Content */}
       <div>
         {abaAtiva === 'alunos' && <AlunosTab />}
-        {abaAtiva === 'linha-do-tempo' && <LinhaDoTempoTab />}
+        {abaAtiva === 'linha-do-tempo' && <LinhaDoTempoTab turmaId={id || ''} />}
         {abaAtiva === 'planos' && <PlanosTab />}
         {abaAtiva === 'atividades' && <AtividadesTab />}
         {abaAtiva === 'boletim' && <BoletimTab />}
@@ -611,106 +633,252 @@ function AlunosTab() {
   );
 }
 
-function LinhaDoTempoTab() {
-  const eventos = [
-    { 
-      id: '1', 
-      tipo: 'Prova', 
-      titulo: 'Prova Bimestral - Álgebra', 
-      data: '2024-05-20', 
-      status: 'Agendado',
-      descricao: 'Avaliação sobre equações e funções do 1º grau',
-      icon: FileText,
-      cor: 'bg-primary'
-    },
-    { 
-      id: '2', 
-      tipo: 'Entrega', 
-      titulo: 'Trabalho em Grupo - Geometria', 
-      data: '2024-05-15', 
-      status: 'Concluído',
-      descricao: '28 alunos entregaram no prazo',
-      icon: ListChecks,
-      cor: 'bg-success'
-    },
-    { 
-      id: '3', 
-      tipo: 'Aviso', 
-      titulo: 'Reunião de Pais', 
-      data: '2024-05-25', 
-      status: 'Pendente',
-      descricao: 'Discussão sobre desempenho do 2º bimestre',
-      icon: Users,
-      cor: 'bg-warning'
-    },
-    { 
-      id: '4', 
-      tipo: 'Aula', 
-      titulo: 'Aula Prática - Laboratório', 
-      data: '2024-05-10', 
-      status: 'Concluído',
-      descricao: 'Experiências com polígonos e áreas',
-      icon: BookOpen,
-      cor: 'bg-secondary'
-    },
-  ];
+const TIPO_CONFIG: Record<Marco['tipo'], { cor: string; icon: React.ElementType }> = {
+  Prova:    { cor: 'bg-primary',   icon: FileText   },
+  Entrega:  { cor: 'bg-success',   icon: ListChecks },
+  Aviso:    { cor: 'bg-warning',   icon: Users      },
+  Simulado: { cor: 'bg-secondary', icon: BookOpen   },
+  Evento:   { cor: 'bg-info',      icon: Calendar   },
+};
+
+interface MarcoFormState {
+  titulo: string;
+  descricao: string;
+  tipo: Marco['tipo'];
+  data: string;
+}
+
+const FORM_VAZIO: MarcoFormState = { titulo: '', descricao: '', tipo: 'Evento', data: '' };
+
+function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
+  const { marcos, carregarMarcos, adicionarMarco, atualizarMarco, excluirMarco } = useDados();
+
+  const [showModal, setShowModal]         = useState(false);
+  const [editando, setEditando]           = useState<Marco | null>(null);
+  const [form, setForm]                   = useState<MarcoFormState>(FORM_VAZIO);
+  const [excluindoId, setExcluindoId]     = useState<string | null>(null);
+
+  useEffect(() => {
+    if (turmaId) carregarMarcos(turmaId);
+  }, [turmaId]);
+
+  const marcosOrdenados = [...marcos]
+    .filter((m) => m.turmaId === turmaId)
+    .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+
+  function abrirCriar() {
+    setEditando(null);
+    setForm(FORM_VAZIO);
+    setShowModal(true);
+  }
+
+  function abrirEditar(marco: Marco) {
+    setEditando(marco);
+    setForm({
+      titulo:   marco.titulo,
+      descricao: marco.descricao || '',
+      tipo:     marco.tipo,
+      data:     new Date(marco.data).toISOString().slice(0, 10),
+    });
+    setShowModal(true);
+  }
+
+  function fecharModal() {
+    setShowModal(false);
+    setEditando(null);
+  }
+
+  function salvar() {
+    if (!form.titulo.trim() || !form.data) {
+      toast.error('Campos obrigatórios', 'Preencha o título e a data');
+      return;
+    }
+    if (editando) {
+      atualizarMarco(editando.id, {
+        titulo:    form.titulo,
+        descricao: form.descricao,
+        tipo:      form.tipo,
+        data:      new Date(form.data),
+      });
+      toast.success('Marco atualizado!', 'As alterações foram salvas');
+    } else {
+      adicionarMarco({
+        id:                 crypto.randomUUID(),
+        turmaId,
+        titulo:             form.titulo,
+        descricao:          form.descricao,
+        tipo:               form.tipo,
+        data:               new Date(form.data),
+        bloqueado:          false,
+        vinculosAtividades: [],
+        dataCriacao:        new Date(),
+      });
+      toast.success('Marco adicionado!', 'O evento foi incluído na linha do tempo');
+    }
+    fecharModal();
+  }
+
+  function confirmarExclusao(id: string) { setExcluindoId(id); }
+
+  function executarExclusao() {
+    if (!excluindoId) return;
+    excluirMarco(excluindoId);
+    setExcluindoId(null);
+    toast.success('Marco removido', 'O evento foi excluído da linha do tempo');
+  }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Eventos da Turma</h3>
           <p className="text-sm text-muted-foreground">Histórico de atividades e marcos importantes</p>
         </div>
-        <Button size="sm" icon={<Plus className="h-4 w-4" />}>
+        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={abrirCriar}>
           Adicionar Marco
         </Button>
       </div>
 
-      <div className="space-y-6">
-        {eventos.map((evento, index) => {
-          const EventoIcon = evento.icon;
-          return (
-            <div key={evento.id} className="relative pl-12">
-              {/* Linha vertical */}
-              {index !== eventos.length - 1 && (
-                <div className="absolute left-[23px] top-12 bottom-0 w-0.5 bg-border"></div>
-              )}
-              
-              {/* Ícone do evento */}
-              <div className={`absolute left-0 top-2 w-12 h-12 ${evento.cor} rounded-full flex items-center justify-center border-4 border-background shadow-lg`}>
-                <EventoIcon className="h-5 w-5 text-white" />
-              </div>
-
-              {/* Card do evento */}
-              <Card className="hover:shadow-lg transition-all">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="info">{evento.tipo}</Badge>
-                        <Badge variant={evento.status === 'Concluído' ? 'success' : evento.status === 'Pendente' ? 'warning' : 'default'}>
-                          {evento.status}
-                        </Badge>
-                      </div>
-                      <h4 className="font-semibold text-foreground text-lg mb-1">{evento.titulo}</h4>
-                      <p className="text-sm text-muted-foreground mb-2">{evento.descricao}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(evento.data).toLocaleDateString('pt-BR', { 
-                          day: '2-digit', 
-                          month: 'long', 
-                          year: 'numeric' 
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+      {/* Lista vazia */}
+      {marcosOrdenados.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center text-muted-foreground">
+            <div className="max-w-md mx-auto space-y-4">
+              <Calendar className="h-16 w-16 mx-auto opacity-50" />
+              <h3 className="text-lg font-semibold text-foreground">Nenhum evento registrado</h3>
+              <p>Adicione marcos importantes como provas, entregas e eventos da turma.</p>
+              <Button onClick={abrirCriar} icon={<Plus className="h-4 w-4" />}>
+                Adicionar Primeiro Marco
+              </Button>
             </div>
-          );
-        })}
-      </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {marcosOrdenados.map((marco, index) => {
+            const config    = TIPO_CONFIG[marco.tipo] ?? TIPO_CONFIG.Evento;
+            const EventoIcon = config.icon;
+            const isPast    = new Date(marco.data) < new Date();
+
+            return (
+              <div key={marco.id} className="relative pl-12">
+                {index !== marcosOrdenados.length - 1 && (
+                  <div className="absolute left-[23px] top-12 bottom-0 w-0.5 bg-border" />
+                )}
+                <div className={`absolute left-0 top-2 w-12 h-12 ${config.cor} rounded-full flex items-center justify-center border-4 border-background shadow-lg`}>
+                  <EventoIcon className="h-5 w-5 text-white" />
+                </div>
+                <Card className="hover:shadow-lg transition-all">
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="info">{marco.tipo}</Badge>
+                          <Badge variant={isPast ? 'success' : 'default'}>
+                            {isPast ? 'Concluído' : 'Agendado'}
+                          </Badge>
+                        </div>
+                        <h4 className="font-semibold text-foreground text-lg mb-1">{marco.titulo}</h4>
+                        {marco.descricao && (
+                          <p className="text-sm text-muted-foreground mb-2">{marco.descricao}</p>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(marco.data).toLocaleDateString('pt-BR', {
+                            day: '2-digit', month: 'long', year: 'numeric',
+                          })}
+                        </div>
+                      </div>
+                      {!marco.bloqueado && (
+                        <div className="flex gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Pencil className="h-4 w-4" />}
+                            onClick={() => abrirEditar(marco)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            icon={<Trash2 className="h-4 w-4" />}
+                            onClick={() => confirmarExclusao(marco.id)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal criar / editar */}
+      <Modal isOpen={showModal} onClose={fecharModal} showCloseButton>
+        <div className="p-6 space-y-4 max-w-md w-full">
+          <h2 className="text-lg font-bold">{editando ? 'Editar Marco' : 'Novo Marco'}</h2>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Título *</label>
+              <Input
+                placeholder="Ex: Prova Bimestral, Entrega de Trabalho..."
+                value={form.titulo}
+                onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Tipo *</label>
+              <Select
+                value={form.tipo}
+                onValueChange={(v) => setForm((f) => ({ ...f, tipo: v as Marco['tipo'] }))}
+              >
+                <option value="Prova">Prova</option>
+                <option value="Entrega">Entrega</option>
+                <option value="Aviso">Aviso</option>
+                <option value="Simulado">Simulado</option>
+                <option value="Evento">Evento</option>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Data *</label>
+              <Input
+                type="date"
+                value={form.data}
+                onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Descrição</label>
+              <Textarea
+                placeholder="Detalhes sobre o evento..."
+                value={form.descricao}
+                onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
+                rows={2}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+            <Button onClick={salvar}>
+              {editando ? 'Salvar Alterações' : 'Adicionar Marco'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Confirmação de exclusão */}
+      <ConfirmModal
+        isOpen={Boolean(excluindoId)}
+        onClose={() => setExcluindoId(null)}
+        onConfirm={executarExclusao}
+        title="Excluir Marco"
+        description="Esta ação não pode ser desfeita. O marco será removido permanentemente da linha do tempo."
+        confirmText="Excluir"
+        variant="danger"
+      />
     </div>
   );
 }

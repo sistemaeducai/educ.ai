@@ -556,9 +556,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signInWithGoogle() {
-    const baseUrl = window.location.hostname === 'localhost'
-      ? window.location.origin
-      : 'https://educai.figma.site';
+    const baseUrl = window.location.origin;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

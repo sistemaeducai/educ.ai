@@ -1,6 +1,5 @@
 import { Bell, Menu, User, Settings, LogOut, Shield, Check, X } from 'lucide-react';
 import { useState } from 'react';
-import userAvatar from 'figma:asset/7853c9b6c270d02b175da4d5d394184a930f4e5d.png';
 import { MobileSidebar } from './MobileSidebar';
 import { Link, useNavigate } from 'react-router';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -215,11 +214,9 @@ export function Header() {
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-3 hover:bg-muted rounded-lg px-3 py-2 transition-colors"
             >
-              <img 
-                src={userAvatar} 
-                alt="Professor" 
-                className="h-8 w-8 rounded-full object-cover"
-              />
+              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                <User className="h-5 w-5 text-muted-foreground" />
+              </div>
             </button>
 
             {/* Dropdown Menu */}

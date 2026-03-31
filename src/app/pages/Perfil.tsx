@@ -5,7 +5,6 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Save, Upload, User, Bell, Shield, BookOpen } from 'lucide-react';
 import { mockTurmas } from '../data/mockData';
-import userAvatar from 'figma:asset/7853c9b6c270d02b175da4d5d394184a930f4e5d.png';
 import { toast } from 'sonner';
 
 export default function Perfil() {
@@ -58,11 +57,9 @@ export default function Perfil() {
             <CardContent className="space-y-4">
               {/* Foto de Perfil */}
               <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
-                <img
-                  src={userAvatar}
-                  alt="Professor"
-                  className="h-20 w-20 rounded-full object-cover border-4 border-secondary"
-                />
+                <div className="h-20 w-20 rounded-full border-4 border-secondary bg-muted flex items-center justify-center">
+                  <User className="h-10 w-10 text-muted-foreground" />
+                </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-foreground">Foto de Perfil</p>
                   <p className="text-sm text-muted-foreground mb-2">Formatos aceitos: JPG, PNG (max 2MB)</p>

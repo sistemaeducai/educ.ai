@@ -1,9 +1,8 @@
 import { Navigate } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { AguardandoAprovacaoModal } from '../pages/AguardandoAprovacao';
 
-export function RotaProtegida({ children }: { children: React.ReactNode }) {
-  const { user, usuario, loading, isPendente } = useAuth();
+export function RotaAdmin({ children }: { children: React.ReactNode }) {
+  const { user, usuario, loading, isAdmin } = useAuth();
 
   if (loading) {
     return (
@@ -31,13 +30,8 @@ export function RotaProtegida({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isPendente) {
-    return (
-      <>
-        {children}
-        <AguardandoAprovacaoModal isOpen={true} />
-      </>
-    );
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

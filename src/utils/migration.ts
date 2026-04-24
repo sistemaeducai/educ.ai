@@ -1,11 +1,12 @@
 /**
  * Script de Migração - localStorage → Supabase
  * EDUC.AI
- * 
+ *
  * Este arquivo contém funções para migrar dados do localStorage para o Supabase
  * Execute uma única vez após configurar o banco de dados
  */
 
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { TurmasService } from '../services/turmas.service';
 import { AlunosService } from '../services/alunos.service';
@@ -301,9 +302,6 @@ export function BotaoMigrar({ professorId }: { professorId: string }) {
     </div>
   );
 }
-
-// Adicionar import no início do arquivo
-import { useState } from 'react';
 
 /**
  * INSTRUÇÕES DE USO:

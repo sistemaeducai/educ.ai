@@ -1,18 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Save, Upload, User, Bell, Shield, BookOpen } from 'lucide-react';
-import { mockTurmas } from '../data/mockData';
+import { Save, Upload, User, Bell, Shield, BookOpen, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+
+interface TurmaSimples {
+  id: string;
+  nome: string;
+  serie: string;
+  total_alunos: number;
+}
 
 export default function Perfil() {
+  const { usuario } = useAuth();
+
   const [formData, setFormData] = useState({
-    nomeCompleto: 'Professor José Silva',
-    email: 'jose.silva@escola.edu.br',
-    telefone: '(11) 98765-4321',
-    disciplina: 'Matemática',
+    nomeCompleto: '',
+    email: '',
+    telefone: '',
+    disciplina: '',
   });
 
   const [preferencias, setPreferencias] = useState({
@@ -22,17 +32,94 @@ export default function Perfil() {
     lembretesPrazos: true,
   });
 
-  const handleSave = () => {
-    toast.success('Perfil atualizado com sucesso!');
+  const [turmas, setTurmas] = useState<TurmaSimples[]>([]);
+  const [stats, setStats] = useState({ planos: 0, atividades: 0 });
+  const [saving, setSaving] = useState(false);
+
+  // Preenche formulário quando dados do usuário chegam
+  useEffect(() => {
+    if (!usuario) return;
+
+    const disciplinas: string[] = Array.isArray((usuario as any).professorData?.disciplinas)
+      ? (usuario as any).professorData.disciplinas
+      : [];
+
+    setFormData({
+      nomeCompleto: usuario.nome ?? '',
+      email: usuario.email ?? '',
+      telefone: (usuario as any).professorData?.telefone ?? '',
+      disciplina: disciplinas.join(', '),
+    });
+  }, [usuario]);
+
+  // Carrega turmas e stats do professor
+  useEffect(() => {
+    if (!usuario?.id) return;
+
+    const carregarDados = async () => {
+      const [{ data: turmasData }, { count: planosCount }, { count: atividadesCount }] =
+        await Promise.all([
+          supabase
+            .from('turmas')
+            .select('id, nome, serie, total_alunos')
+            .eq('professor_id', usuario.id)
+            .order('nome'),
+          supabase
+            .from('planos_aula')
+            .select('*', { count: 'exact', head: true })
+            .eq('professor_id', usuario.id),
+          supabase
+            .from('atividades')
+            .select('*', { count: 'exact', head: true })
+            .eq('professor_id', usuario.id),
+        ]);
+
+      setTurmas(turmasData ?? []);
+      setStats({ planos: planosCount ?? 0, atividades: atividadesCount ?? 0 });
+    };
+
+    carregarDados();
+  }, [usuario?.id]);
+
+  const handleSave = async () => {
+    if (!usuario?.id) return;
+    try {
+      setSaving(true);
+
+      const { error: usuarioError } = await supabase
+        .from('usuarios')
+        .update({ nome: formData.nomeCompleto })
+        .eq('id', usuario.id);
+
+      if (usuarioError) throw usuarioError;
+
+      const disciplinasArr = formData.disciplina
+        .split(',')
+        .map(d => d.trim())
+        .filter(Boolean);
+
+      await supabase
+        .from('professores')
+        .update({ disciplinas: disciplinasArr })
+        .eq('id', usuario.id);
+
+      toast.success('Perfil atualizado com sucesso!');
+    } catch (error) {
+      console.error('[Perfil] Erro ao salvar:', error);
+      toast.error('Erro ao salvar perfil');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handlePhotoUpload = () => {
     toast.info('Funcionalidade de upload será implementada em breve');
   };
 
+  const totalAlunos = turmas.reduce((acc, t) => acc + (t.total_alunos || 0), 0);
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Meu Perfil</h1>
         <p className="text-muted-foreground mt-1">Gerencie suas informações pessoais e preferências</p>
@@ -41,7 +128,6 @@ export default function Perfil() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Coluna Principal */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Informações Pessoais */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -55,10 +141,14 @@ export default function Perfil() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Foto de Perfil */}
+              {/* Foto */}
               <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
-                <div className="h-20 w-20 rounded-full border-4 border-secondary bg-muted flex items-center justify-center">
-                  <User className="h-10 w-10 text-muted-foreground" />
+                <div className="h-20 w-20 rounded-full border-4 border-secondary bg-muted flex items-center justify-center overflow-hidden">
+                  {usuario?.avatar_url ? (
+                    <img src={usuario.avatar_url} alt="Foto" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="h-10 w-10 text-muted-foreground" />
+                  )}
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-foreground">Foto de Perfil</p>
@@ -74,7 +164,6 @@ export default function Perfil() {
                 </div>
               </div>
 
-              {/* Formulário */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="Nome Completo"
@@ -95,13 +184,15 @@ export default function Perfil() {
                 type="email"
                 disabled
                 value={formData.email}
-                helperText="E-mail sincronizado com Google (não editável)"
+                helperText="E-mail vinculado à conta (não editável)"
               />
 
               <Input
-                label="Disciplina Principal"
+                label="Disciplina(s) Principal(is)"
+                placeholder="Ex: Matemática, Física"
                 value={formData.disciplina}
                 onChange={(e) => setFormData({ ...formData, disciplina: e.target.value })}
+                helperText="Separe múltiplas disciplinas com vírgula"
               />
 
               <div className="flex items-start gap-2 p-3 bg-secondary/10 rounded-lg border border-secondary/20">
@@ -117,13 +208,17 @@ export default function Perfil() {
                 </div>
               </div>
 
-              <Button icon={<Save className="h-4 w-4" />} onClick={handleSave}>
-                Salvar Alterações
+              <Button
+                icon={saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
             </CardContent>
           </Card>
 
-          {/* Preferências de Notificações */}
+          {/* Preferências */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -137,71 +232,27 @@ export default function Perfil() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <label className="flex items-center justify-between p-3 bg-muted/20 rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
-                <div>
-                  <p className="font-semibold text-foreground">Notificações por E-mail</p>
-                  <p className="text-sm text-muted-foreground">Receba atualizações importantes por e-mail</p>
-                </div>
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 text-secondary rounded focus:ring-2 focus:ring-secondary"
-                  checked={preferencias.notificacoesEmail}
-                  onChange={(e) =>
-                    setPreferencias({ ...preferencias, notificacoesEmail: e.target.checked })
-                  }
-                />
-              </label>
+              {[
+                { key: 'notificacoesEmail',  label: 'Notificações por E-mail',     desc: 'Receba atualizações importantes por e-mail' },
+                { key: 'alertasAtividades',  label: 'Alertas de Novas Atividades', desc: 'Seja notificado quando alunos entregarem atividades' },
+                { key: 'relatoriosSemanais', label: 'Relatórios Semanais',         desc: 'Receba resumo semanal de atividades' },
+                { key: 'lembretesPrazos',    label: 'Lembretes de Prazos',         desc: 'Receba lembretes antes dos prazos de entrega' },
+              ].map(({ key, label, desc }) => (
+                <label key={key} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
+                  <div>
+                    <p className="font-semibold text-foreground">{label}</p>
+                    <p className="text-sm text-muted-foreground">{desc}</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 text-secondary rounded focus:ring-2 focus:ring-secondary"
+                    checked={preferencias[key as keyof typeof preferencias]}
+                    onChange={(e) => setPreferencias({ ...preferencias, [key]: e.target.checked })}
+                  />
+                </label>
+              ))}
 
-              <label className="flex items-center justify-between p-3 bg-muted/20 rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
-                <div>
-                  <p className="font-semibold text-foreground">Alertas de Novas Atividades</p>
-                  <p className="text-sm text-muted-foreground">
-                    Seja notificado quando alunos entregarem atividades
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 text-secondary rounded focus:ring-2 focus:ring-secondary"
-                  checked={preferencias.alertasAtividades}
-                  onChange={(e) =>
-                    setPreferencias({ ...preferencias, alertasAtividades: e.target.checked })
-                  }
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 bg-muted/20 rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
-                <div>
-                  <p className="font-semibold text-foreground">Relatórios Semanais</p>
-                  <p className="text-sm text-muted-foreground">Receba resumo semanal de atividades</p>
-                </div>
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 text-secondary rounded focus:ring-2 focus:ring-secondary"
-                  checked={preferencias.relatoriosSemanais}
-                  onChange={(e) =>
-                    setPreferencias({ ...preferencias, relatoriosSemanais: e.target.checked })
-                  }
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 bg-muted/20 rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
-                <div>
-                  <p className="font-semibold text-foreground">Lembretes de Prazos</p>
-                  <p className="text-sm text-muted-foreground">
-                    Receba lembretes antes dos prazos de entrega
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 text-secondary rounded focus:ring-2 focus:ring-secondary"
-                  checked={preferencias.lembretesPrazos}
-                  onChange={(e) =>
-                    setPreferencias({ ...preferencias, lembretesPrazos: e.target.checked })
-                  }
-                />
-              </label>
-
-              <Button icon={<Save className="h-4 w-4" />} onClick={handleSave}>
+              <Button icon={<Save className="h-4 w-4" />} onClick={() => toast.success('Preferências salvas!')}>
                 Salvar Preferências
               </Button>
             </CardContent>
@@ -210,7 +261,7 @@ export default function Perfil() {
 
         {/* Coluna Lateral */}
         <div className="space-y-6">
-          {/* Turmas Vinculadas */}
+          {/* Turmas */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -224,32 +275,29 @@ export default function Perfil() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {mockTurmas.map((turma) => (
-                <div
-                  key={turma.id}
-                  className="p-3 bg-muted/20 rounded-lg hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold text-foreground text-sm">{turma.nome}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Código: {turma.codigo}</p>
+              {turmas.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhuma turma cadastrada.</p>
+              ) : (
+                turmas.map((t) => (
+                  <div key={t.id} className="p-3 bg-muted/20 rounded-lg hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-foreground text-sm">{t.nome}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{t.serie}</p>
+                      </div>
+                      <Badge variant="success" className="text-xs">Ativa</Badge>
                     </div>
-                    <Badge variant="success" className="text-xs">
-                      {turma.status}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
                       <User className="h-3 w-3" />
-                      <span>{turma.nAlunos} alunos</span>
+                      <span>{t.total_alunos} alunos</span>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
 
-          {/* Estatísticas Rápidas */}
+          {/* Estatísticas */}
           <Card>
             <CardHeader>
               <CardTitle>Suas Estatísticas</CardTitle>
@@ -257,26 +305,24 @@ export default function Perfil() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Turmas Ativas</span>
-                <span className="text-lg font-bold text-secondary">{mockTurmas.length}</span>
+                <span className="text-lg font-bold text-secondary">{turmas.length}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Total de Alunos</span>
-                <span className="text-lg font-bold text-secondary">
-                  {mockTurmas.reduce((acc, t) => acc + t.nAlunos, 0)}
-                </span>
+                <span className="text-lg font-bold text-secondary">{totalAlunos}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Planos de Aula</span>
-                <span className="text-lg font-bold text-secondary">12</span>
+                <span className="text-lg font-bold text-secondary">{stats.planos}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Atividades Criadas</span>
-                <span className="text-lg font-bold text-secondary">28</span>
+                <span className="text-lg font-bold text-secondary">{stats.atividades}</span>
               </div>
             </CardContent>
           </Card>
 
-          {/* Ações de Conta */}
+          {/* Zona de Perigo */}
           <Card className="border-destructive/20">
             <CardHeader>
               <CardTitle className="text-destructive">Zona de Perigo</CardTitle>
@@ -298,12 +344,8 @@ export default function Perfil() {
                 variant="outline"
                 className="w-full text-destructive border-destructive hover:bg-destructive/10"
                 onClick={() => {
-                  if (
-                    confirm(
-                      'ATENÇÃO: Esta ação é irreversível. Todos os seus dados serão permanentemente excluídos. Deseja continuar?'
-                    )
-                  ) {
-                    toast.error('Solicitação de exclusão registrada. Nossa equipe entrará em contato.');
+                  if (confirm('ATENÇÃO: Esta ação é irreversível. Deseja continuar?')) {
+                    toast.error('Solicitação registrada. Nossa equipe entrará em contato.');
                   }
                 }}
               >

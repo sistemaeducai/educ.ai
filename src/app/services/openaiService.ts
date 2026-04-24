@@ -1,5 +1,14 @@
+import { supabase } from '../../lib/supabase';
+
 const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/make-server-7f151d2a`;
 const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+async function getAuthToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Não autorizado');
+  return token;
+}
 
 /**
  * Interface para dados de geração de plano de aula
@@ -697,10 +706,7 @@ export async function gerarInsightsDashboard(
   dados: GerarInsightsDashboardInput
 ): Promise<InsightsDashboardResponse> {
   try {
-    const token = localStorage.getItem('supabase_token');
-    if (!token) {
-      throw new Error('Não autorizado');
-    }
+    const token = await getAuthToken();
 
     const response = await fetch(`${API_URL}/openai/gerar-insights-dashboard`, {
       method: 'POST',
@@ -716,10 +722,7 @@ export async function gerarInsightsDashboard(
       throw new Error(errorData.error || 'Erro ao gerar insights do dashboard');
     }
 
-    const result = await response.json();
-    console.log('[OpenAI Service] Insights do dashboard gerados:', result);
-
-    return result;
+    return response.json();
   } catch (error) {
     console.error('[OpenAI Service] Erro ao gerar insights:', error);
     throw error;
@@ -785,10 +788,7 @@ export interface AnaliseTurmaResponse {
  */
 export async function analisarTurma(dados: AnalisarTurmaInput): Promise<AnaliseTurmaResponse> {
   try {
-    const token = localStorage.getItem('supabase_token');
-    if (!token) {
-      throw new Error('Não autorizado');
-    }
+    const token = await getAuthToken();
 
     const response = await fetch(`${API_URL}/openai/analisar-turma`, {
       method: 'POST',
@@ -804,10 +804,7 @@ export async function analisarTurma(dados: AnalisarTurmaInput): Promise<AnaliseT
       throw new Error(errorData.error || 'Erro ao analisar turma');
     }
 
-    const result = await response.json();
-    console.log('[OpenAI Service] Análise de turma aprimorada gerada:', result);
-
-    return result;
+    return response.json();
   } catch (error) {
     console.error('[OpenAI Service] Erro ao analisar turma:', error);
     throw error;
@@ -846,10 +843,7 @@ export interface SugerirIntervencoesResponse {
  */
 export async function sugerirIntervencoes(dados: SugerirIntervencoesInput): Promise<SugerirIntervencoesResponse> {
   try {
-    const token = localStorage.getItem('supabase_token');
-    if (!token) {
-      throw new Error('Não autorizado');
-    }
+    const token = await getAuthToken();
 
     const response = await fetch(`${API_URL}/openai/sugerir-intervencoes-pedagogicas`, {
       method: 'POST',
@@ -865,10 +859,7 @@ export async function sugerirIntervencoes(dados: SugerirIntervencoesInput): Prom
       throw new Error(errorData.error || 'Erro ao sugerir intervenções');
     }
 
-    const result = await response.json();
-    console.log('[OpenAI Service] Intervenções pedagógicas sugeridas:', result);
-
-    return result;
+    return response.json();
   } catch (error) {
     console.error('[OpenAI Service] Erro ao sugerir intervenções:', error);
     throw error;
@@ -911,10 +902,7 @@ export interface DetectarAnomaliasResponse {
  */
 export async function detectarAnomalias(): Promise<DetectarAnomaliasResponse> {
   try {
-    const token = localStorage.getItem('supabase_token');
-    if (!token) {
-      throw new Error('Não autorizado');
-    }
+    const token = await getAuthToken();
 
     const response = await fetch(`${API_URL}/openai/detectar-anomalias`, {
       method: 'POST',
@@ -930,10 +918,7 @@ export async function detectarAnomalias(): Promise<DetectarAnomaliasResponse> {
       throw new Error(errorData.error || 'Erro ao detectar anomalias');
     }
 
-    const result = await response.json();
-    console.log('[OpenAI Service] Detecção de anomalias concluída:', result);
-
-    return result;
+    return response.json();
   } catch (error) {
     console.error('[OpenAI Service] Erro ao detectar anomalias:', error);
     throw error;
@@ -967,10 +952,7 @@ export interface PriorizarTurmasResponse {
  */
 export async function priorizarTurmas(): Promise<PriorizarTurmasResponse> {
   try {
-    const token = localStorage.getItem('supabase_token');
-    if (!token) {
-      throw new Error('Não autorizado');
-    }
+    const token = await getAuthToken();
 
     const response = await fetch(`${API_URL}/openai/priorizar-turmas`, {
       method: 'POST',
@@ -986,10 +968,7 @@ export async function priorizarTurmas(): Promise<PriorizarTurmasResponse> {
       throw new Error(errorData.error || 'Erro ao priorizar turmas');
     }
 
-    const result = await response.json();
-    console.log('[OpenAI Service] Priorização de turmas concluída:', result);
-
-    return result;
+    return response.json();
   } catch (error) {
     console.error('[OpenAI Service] Erro ao priorizar turmas:', error);
     throw error;

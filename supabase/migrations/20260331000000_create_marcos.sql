@@ -41,6 +41,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS marcos_updated_at ON public.marcos;
+
 CREATE TRIGGER marcos_updated_at
   BEFORE UPDATE ON public.marcos
   FOR EACH ROW

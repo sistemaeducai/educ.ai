@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { MainLayout } from './components/layout/MainLayout';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { RotaProtegida } from './components/RotaProtegida';
+import { RotaAdmin } from './components/RotaAdmin';
 import Login from './pages/Login';
 import Callback from './pages/Callback';
 import Dashboard from './pages/Dashboard';
@@ -63,7 +64,11 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin',
-    element: <AdminLayout />,
+    element: (
+      <RotaAdmin>
+        <AdminLayout />
+      </RotaAdmin>
+    ),
     children: [
       { index: true, Component: AdminIntegracoes },
       { path: 'usuarios', Component: AdminUsuarios },

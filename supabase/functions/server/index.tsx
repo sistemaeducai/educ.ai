@@ -270,13 +270,13 @@ app.get("/make-server-7f151d2a/logs", async (c) => {
     }
 
     // Verificar se é admin
-    const { data: professor } = await supabase
-      .from("professores")
-      .select("role")
+    const { data: usuarioData } = await supabase
+      .from("usuarios")
+      .select("tipo_usuario")
       .eq("id", user.id)
       .single();
 
-    if (professor?.role !== "admin") {
+    if (usuarioData?.tipo_usuario !== "admin") {
       return c.json({ error: "Acesso negado. Apenas administradores." }, 403);
     }
 
@@ -368,22 +368,22 @@ app.post("/make-server-7f151d2a/config", async (c) => {
     const supabase = getSupabaseClient();
 
     // Verificar se é admin
-    const { data: professor, error: profError } = await supabase
-      .from("professores")
-      .select("role")
+    const { data: usuarioAdmin, error: adminError } = await supabase
+      .from("usuarios")
+      .select("tipo_usuario")
       .eq("id", user.id)
       .single();
-    
-    if (profError) {
-      console.log("[SERVIDOR] ❌ Erro ao buscar professor:", profError.message);
+
+    if (adminError) {
+      console.log("[SERVIDOR] ❌ Erro ao buscar usuário:", adminError.message);
       return c.json({ error: "Erro ao verificar permissões" }, 500);
     }
 
-    if (professor?.role !== "admin") {
-      console.log("[SERVIDOR] ❌ Acesso negado - role:", professor?.role);
+    if (usuarioAdmin?.tipo_usuario !== "admin") {
+      console.log("[SERVIDOR] ❌ Acesso negado - tipo:", usuarioAdmin?.tipo_usuario);
       return c.json({ error: "Acesso negado - apenas administradores" }, 403);
     }
-    
+
     console.log("[SERVIDOR] ✅ Usuário é admin");
 
     const body = await c.req.json();
@@ -436,22 +436,22 @@ app.post("/make-server-7f151d2a/config/batch", async (c) => {
     const supabase = getSupabaseClient();
 
     // Verificar se é admin
-    const { data: professor, error: profError } = await supabase
-      .from("professores")
-      .select("role")
+    const { data: usuarioBatch, error: batchAdminError } = await supabase
+      .from("usuarios")
+      .select("tipo_usuario")
       .eq("id", user.id)
       .single();
-    
-    if (profError) {
-      console.log("[SERVIDOR] ❌ Erro ao buscar professor:", profError.message);
+
+    if (batchAdminError) {
+      console.log("[SERVIDOR] ❌ Erro ao buscar usuário:", batchAdminError.message);
       return c.json({ error: "Erro ao verificar permissões" }, 500);
     }
 
-    if (professor?.role !== "admin") {
-      console.log("[SERVIDOR] ❌ Acesso negado - role:", professor?.role);
+    if (usuarioBatch?.tipo_usuario !== "admin") {
+      console.log("[SERVIDOR] ❌ Acesso negado - tipo:", usuarioBatch?.tipo_usuario);
       return c.json({ error: "Acesso negado - apenas administradores" }, 403);
     }
-    
+
     console.log("[SERVIDOR] ✅ Usuário é admin");
 
     const body = await c.req.json();
@@ -468,7 +468,7 @@ app.post("/make-server-7f151d2a/config/batch", async (c) => {
     }
 
     // Salvar todas de uma vez
-    await kv.mset(kvPairs);
+    await kv.mset(kvPairs.map(p => p.key), kvPairs.map(p => p.value));
     
     console.log(`[SERVIDOR] ${kvPairs.length} configurações salvas`);
     return c.json({ success: true, count: kvPairs.length });
@@ -499,13 +499,13 @@ app.get("/make-server-7f151d2a/admin/stats", async (c) => {
     }
 
     // Verificar se é admin
-    const { data: professor } = await supabase
-      .from("professores")
-      .select("role")
+    const { data: usuarioStats } = await supabase
+      .from("usuarios")
+      .select("tipo_usuario")
       .eq("id", user.id)
       .single();
 
-    if (professor?.role !== "admin") {
+    if (usuarioStats?.tipo_usuario !== "admin") {
       return c.json({ error: "Acesso negado" }, 403);
     }
 

@@ -16,7 +16,7 @@ export const supabase = createClient<Database>(supabaseUrl, publicAnonKey, {
     persistSession: true,
     detectSessionInUrl: true, // CORREÇÃO: detectSessionInUrl (não detectSessionUrl)
     flowType: 'pkce', // CORREÇÃO: PKCE flow (não implicit)
-    debug: true,
+    debug: import.meta.env.DEV,
   },
 });
 

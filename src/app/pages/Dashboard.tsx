@@ -3,16 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { toast } from '../components/ui/Toast';
-import { 
-  Users, 
-  ListChecks, 
-  TrendingUp, 
-  FolderOpen, 
-  BookOpen, 
-  MessageSquare, 
-  Plus, 
-  Sparkles, 
-  Loader2, 
+import {
+  Users,
+  ListChecks,
+  TrendingUp,
+  FolderOpen,
+  BookOpen,
+  MessageSquare,
+  Plus,
+  Sparkles,
+  Loader2,
   AlertCircle,
   TrendingDown,
   Minus,
@@ -20,11 +20,13 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { gerarInsightsDashboard, InsightsDashboardResponse } from '../services/openaiService';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { config } = useConfig();
+  const { user } = useAuth();
   const openaiConfigured = Boolean(config.openai_api_key);
 
   // Estados para Insights de IA
@@ -94,11 +96,8 @@ export default function Dashboard() {
       setLoadingIA(true);
       setErroIA(null);
 
-      const token = localStorage.getItem('supabase_token');
-      const userId = token ? 'user-id' : 'default'; // Em produção, extrair userId real do token
-
       const data = await gerarInsightsDashboard({
-        professorId: userId,
+        professorId: user?.id ?? '',
         periodo
       });
 

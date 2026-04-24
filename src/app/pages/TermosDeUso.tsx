@@ -24,12 +24,12 @@ export default function TermosDeUso() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Scale className="h-5 w-5 text-primary" />
-            Bem-vindo ao ESTUD.AI
+            Bem-vindo ao EDUC.AI
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-foreground leading-relaxed">
-            Estes Termos de Uso ("Termos") regem o acesso e uso do <strong>ESTUD.AI</strong>, uma plataforma
+            Estes Termos de Uso ("Termos") regem o acesso e uso do <strong>EDUC.AI</strong>, uma plataforma
             educacional que utiliza inteligência artificial para apoiar professores no planejamento pedagógico
             e correção de atividades escolares.
           </p>
@@ -54,7 +54,7 @@ export default function TermosDeUso() {
               <strong>"Plataforma" ou "Sistema":</strong>
             </p>
             <p className="text-muted-foreground ml-4">
-              Refere-se ao ESTUD.AI e todas as suas funcionalidades.
+              Refere-se ao EDUC.AI e todas as suas funcionalidades.
             </p>
           </div>
           <div>
@@ -142,7 +142,7 @@ export default function TermosDeUso() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-foreground leading-relaxed">Você pode utilizar o ESTUD.AI para:</p>
+          <p className="text-foreground leading-relaxed">Você pode utilizar o EDUC.AI para:</p>
           <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
             <li>Criar e gerenciar planos de aula alinhados à BNCC</li>
             <li>Elaborar atividades didáticas (objetivas, discursivas ou mistas)</li>
@@ -211,7 +211,7 @@ export default function TermosDeUso() {
           <div>
             <h4 className="font-semibold text-foreground mb-2">6.3 Limitações</h4>
             <p className="text-muted-foreground">
-              A IA pode gerar conteúdo impreciso ou inadequado. O ESTUD.AI não se responsabiliza por erros da
+              A IA pode gerar conteúdo impreciso ou inadequado. O EDUC.AI não se responsabiliza por erros da
               IA não corrigidos pelo professor.
             </p>
           </div>
@@ -233,7 +233,7 @@ export default function TermosDeUso() {
           <div>
             <h4 className="font-semibold text-foreground mb-2">7.1 Conteúdo do Sistema</h4>
             <p className="text-muted-foreground">
-              A plataforma ESTUD.AI (código, design, marca) é protegida por direitos autorais e propriedade
+              A plataforma EDUC.AI (código, design, marca) é protegida por direitos autorais e propriedade
               intelectual. Todos os direitos reservados.
             </p>
           </div>
@@ -273,7 +273,7 @@ export default function TermosDeUso() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold text-foreground mb-2">8.2 Do ESTUD.AI</h4>
+            <h4 className="font-semibold text-foreground mb-2">8.2 Do EDUC.AI</h4>
             <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
               <li>Manter o sistema operacional e seguro</li>
               <li>Proteger dados conforme LGPD</li>
@@ -290,7 +290,7 @@ export default function TermosDeUso() {
           <CardTitle>9. Limitação de Responsabilidade</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-foreground leading-relaxed">O ESTUD.AI não se responsabiliza por:</p>
+          <p className="text-foreground leading-relaxed">O EDUC.AI não se responsabiliza por:</p>
           <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
             <li>Erros ou imprecisões em conteúdo gerado por IA</li>
             <li>Decisões pedagógicas baseadas em sugestões da IA</li>
@@ -394,7 +394,7 @@ export default function TermosDeUso() {
       <Card className="bg-primary/5 border-primary/20">
         <CardContent className="p-6">
           <p className="text-center text-foreground leading-relaxed">
-            <strong>Ao utilizar o ESTUD.AI, você declara que leu, compreendeu e aceitou integralmente estes
+            <strong>Ao utilizar o EDUC.AI, você declara que leu, compreendeu e aceitou integralmente estes
             Termos de Uso e a Política de Privacidade.</strong>
           </p>
           <p className="text-center text-sm text-muted-foreground mt-2">

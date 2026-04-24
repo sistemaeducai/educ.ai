@@ -14,6 +14,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { toast } from '../ui/Toast';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const itensMenu = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -29,14 +30,14 @@ const itensMenu = [
 
 export function Sidebar() {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
 
-  const aoClicarSair = () => {
-    // Limpar localStorage se desejar reset completo
-    if (confirm('Deseja limpar todos os dados do sistema?')) {
-      localStorage.clear();
-      window.location.reload();
-    } else {
-      toast.info('Logout cancelado', 'Seus dados foram mantidos');
+  const aoClicarSair = async () => {
+    try {
+      await signOut();
+      navigate('/login');
+    } catch {
+      toast.error('Erro ao sair', 'Tente novamente.');
     }
   };
 
@@ -44,7 +45,7 @@ export function Sidebar() {
     <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-60 bg-sidebar border-r border-sidebar-border flex-col">
       {/* Logo */}
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-sidebar-foreground">ESTUD.AI</h1>
+        <h1 className="text-2xl font-bold text-sidebar-foreground">EDUC.AI</h1>
       </div>
 
       {/* Navigation */}

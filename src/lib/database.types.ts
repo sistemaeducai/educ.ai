@@ -21,7 +21,8 @@ export interface Database {
           nome: string
           google_id: string | null
           avatar_url: string | null
-          tipo_usuario: 'professor' | 'coordenador' | 'admin' | 'visitante'
+          tipo_usuario: 'professor' | 'coordenador' | 'admin' | 'visitante' | 'pendente'
+          status_aprovacao: 'pendente' | 'aprovado' | 'rejeitado'
           ativo: boolean
           created_at: string
           updated_at: string
@@ -32,7 +33,8 @@ export interface Database {
           nome: string
           google_id?: string | null
           avatar_url?: string | null
-          tipo_usuario?: 'professor' | 'coordenador' | 'admin' | 'visitante'
+          tipo_usuario?: 'professor' | 'coordenador' | 'admin' | 'visitante' | 'pendente'
+          status_aprovacao?: 'pendente' | 'aprovado' | 'rejeitado'
           ativo?: boolean
           created_at?: string
           updated_at?: string
@@ -43,7 +45,8 @@ export interface Database {
           nome?: string
           google_id?: string | null
           avatar_url?: string | null
-          tipo_usuario?: 'professor' | 'coordenador' | 'admin' | 'visitante'
+          tipo_usuario?: 'professor' | 'coordenador' | 'admin' | 'visitante' | 'pendente'
+          status_aprovacao?: 'pendente' | 'aprovado' | 'rejeitado'
           ativo?: boolean
           created_at?: string
           updated_at?: string

@@ -84,7 +84,6 @@ interface DadosContextData {
 const DadosContext = createContext<DadosContextData>({} as DadosContextData);
 
 export function DadosProvider({ children }: { children: ReactNode }) {
-  // Estados - DEVEM vir antes de qualquer early return
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [marcos, setMarcos] = useState<Marco[]>([]);
@@ -94,33 +93,23 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [boletins, setBoletins] = useState<Boletim[]>([]);
 
-  // Verificar se o AuthProvider está disponível
-  let authData;
-  let professor;
-  
-  try {
-    authData = useAuth();
-    professor = authData.professor;
-  } catch (error) {
-    console.error('[DadosProvider] AuthProvider não está disponível ainda:', error);
-    professor = null;
-  }
+  const { usuario } = useAuth();
+  const professorId = usuario?.id ?? null;
 
-  // Carregar dados iniciais
   useEffect(() => {
-    if (professor) {
+    if (professorId) {
       carregarTurmas();
       carregarPlanos();
       carregarMateriais();
       carregarAtividades();
     }
-  }, [professor]);
+  }, [professorId]);
 
   // ============ TURMAS ============
 
   function carregarTurmas() {
-    if (!professor) return;
-    const turmasCarregadas = turmasStorage.listar(professor.id);
+    if (!professorId) return;
+    const turmasCarregadas = turmasStorage.listar(professorId);
     setTurmas(turmasCarregadas);
   }
 
@@ -188,7 +177,7 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   }
 
   function atualizarMarco(id: string, dados: Partial<Marco>) {
-    const marcosAtuais = marcosStorage.listar(''); // Buscar todos
+    const marcosAtuais = marcosStorage.listar('');
     const marco = marcosAtuais.find((m) => m.id === id);
     if (!marco) return;
 
@@ -205,8 +194,8 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   // ============ PLANOS DE AULA ============
 
   function carregarPlanos() {
-    if (!professor) return;
-    const planosCarregados = planosStorage.listar(professor.id);
+    if (!professorId) return;
+    const planosCarregados = planosStorage.listar(professorId);
     setPlanos(planosCarregados);
   }
 
@@ -232,8 +221,8 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   // ============ MATERIAIS ============
 
   function carregarMateriais() {
-    if (!professor) return;
-    const materiaisCarregados = materiaisStorage.listar(professor.id);
+    if (!professorId) return;
+    const materiaisCarregados = materiaisStorage.listar(professorId);
     setMateriais(materiaisCarregados);
   }
 
@@ -243,7 +232,7 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   }
 
   function atualizarMaterial(id: string, dados: Partial<Material>) {
-    const materiaisAtuais = materiaisStorage.listar(professor?.id || '');
+    const materiaisAtuais = materiaisStorage.listar(professorId ?? '');
     const material = materiaisAtuais.find((m) => m.id === id);
     if (!material) return;
 
@@ -260,8 +249,8 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   // ============ ATIVIDADES ============
 
   function carregarAtividades(turmaId?: string) {
-    if (!professor) return;
-    const atividadesCarregadas = atividadesStorage.listar(professor.id, turmaId);
+    if (!professorId) return;
+    const atividadesCarregadas = atividadesStorage.listar(professorId, turmaId);
     setAtividades(atividadesCarregadas);
   }
 
@@ -271,7 +260,7 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   }
 
   function atualizarAtividade(id: string, dados: Partial<Atividade>) {
-    const atividadesAtuais = atividadesStorage.listar(professor?.id || '');
+    const atividadesAtuais = atividadesStorage.listar(professorId ?? '');
     const atividade = atividadesAtuais.find((a) => a.id === id);
     if (!atividade) return;
 
@@ -288,8 +277,8 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   // ============ FEEDBACKS ============
 
   function carregarFeedbacks(turmaId?: string) {
-    if (!professor) return;
-    const feedbacksCarregados = feedbacksStorage.listar(professor.id, turmaId);
+    if (!professorId) return;
+    const feedbacksCarregados = feedbacksStorage.listar(professorId, turmaId);
     setFeedbacks(feedbacksCarregados);
   }
 

@@ -29,14 +29,14 @@ export default function PoliticaDePrivacidade() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-foreground leading-relaxed">
-            O <strong>ESTUD.AI</strong> é um sistema de apoio ao planejamento pedagógico e à correção de
+            O <strong>EDUC.AI</strong> é um sistema de apoio ao planejamento pedagógico e à correção de
             atividades escolares que utiliza inteligência artificial. Esta Política de Privacidade descreve
             como coletamos, usamos, armazenamos e protegemos suas informações pessoais, em conformidade com a
             Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/2018).
           </p>
           <div className="p-4 bg-secondary/10 rounded-lg border border-secondary/20">
             <p className="text-sm text-foreground">
-              <strong>Importante:</strong> O ESTUD.AI é destinado exclusivamente para uso educacional por
+              <strong>Importante:</strong> O EDUC.AI é destinado exclusivamente para uso educacional por
               professores. Não coletamos dados de alunos menores de idade diretamente. Toda sincronização de
               dados de alunos é feita via Google Classroom, sob responsabilidade da instituição de ensino.
             </p>
@@ -142,7 +142,7 @@ export default function PoliticaDePrivacidade() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-foreground leading-relaxed">
-            O tratamento de dados pessoais pelo ESTUD.AI tem como base legal:
+            O tratamento de dados pessoais pelo EDUC.AI tem como base legal:
           </p>
           <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4">
             <li>

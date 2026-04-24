@@ -11,7 +11,7 @@ export function MainLayout() {
         <Outlet />
       </main>
       <footer className="lg:ml-60 py-4 px-4 lg:px-6 border-t border-border text-center text-sm text-muted-foreground">
-        © 2024 ESTUD.AI — Todos os direitos reservados.
+        © 2026 EDUC.AI — Todos os direitos reservados.
       </footer>
     </div>
   );

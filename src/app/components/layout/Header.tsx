@@ -110,7 +110,7 @@ export function Header() {
         </button>
 
         {/* Logo on Mobile */}
-        <h1 className="lg:hidden text-xl font-bold text-primary">ESTUD.AI</h1>
+        <h1 className="lg:hidden text-xl font-bold text-primary">EDUC.AI</h1>
 
         <div className="flex items-center gap-4">
           {/* Notifications */}

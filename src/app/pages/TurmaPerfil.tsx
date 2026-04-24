@@ -18,6 +18,7 @@ import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { toast } from '../components/ui/Toast';
 import { ModalAnaliseTurma } from '../components/turma/ModalAnaliseTurma';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useDados } from '../../contexts/DadosContext';
 import type { Marco } from '../../types';
 import { analisarTurma, AnaliseTurmaResponse, sugerirIntervencoes, SugerirIntervencoesResponse } from '../services/openaiService';
@@ -45,6 +46,7 @@ export default function TurmaPerfil() {
   
   // Estados para Análise IA
   const { config } = useConfig();
+  const { user } = useAuth();
   const openaiConfigured = Boolean(config.openai_api_key);
   const [showModalAnalise, setShowModalAnalise] = useState(false);
   const [loadingAnalise, setLoadingAnalise] = useState(false);
@@ -73,8 +75,8 @@ export default function TurmaPerfil() {
       setShowModalAnalise(true);
 
       const resultado = await analisarTurma({
-        professorId: 'professor-123', // TODO: Obter do contexto de usuário
-        turmaId: id || 'turma-1',
+        professorId: user?.id ?? '',
+        turmaId: id ?? '',
         periodo: '30dias'
       });
 

@@ -56,7 +56,7 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
       <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50 lg:hidden">
         {/* Header */}
         <div className="p-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-sidebar-foreground">ESTUD.AI</h1>
+          <h1 className="text-2xl font-bold text-sidebar-foreground">EDUC.AI</h1>
           <button
             onClick={onClose}
             className="p-2 hover:bg-sidebar-accent rounded-lg transition-colors"

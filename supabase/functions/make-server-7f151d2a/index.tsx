@@ -1654,18 +1654,103 @@ app.post("/make-server-7f151d2a/openai/gerar-insights-dashboard", async (c) => {
     const body = await c.req.json();
     const { professorId, periodo = '30dias' } = body;
 
-    // Dados simulados para contexto (em produção viriam do banco de dados)
+    const supabaseClient = getSupabaseClient();
+
+    // 1. Obter turmas reais do professor
+    const { data: dbTurmas, error: turmasErr } = await supabaseClient
+      .from("turmas")
+      .select("id, nome, total_alunos")
+      .eq("professor_id", user.id);
+
+    if (turmasErr) {
+      console.error("[OPENAI] Erro ao buscar turmas:", turmasErr);
+    }
+
+    const turmasReais = [];
+    let totalAlunos = 0;
+    let somaMedias = 0;
+    let turmasComNotas = 0;
+
+    if (dbTurmas && dbTurmas.length > 0) {
+      const { data: dbAlunosCount } = await supabaseClient
+        .from("alunos")
+        .select("turma_id")
+        .in("turma_id", dbTurmas.map(t => t.id));
+
+      const { data: dbCorrecoes } = await supabaseClient
+        .from("correcoes")
+        .select("nota, status, aluno_id, atividade_id")
+        .eq("professor_id", user.id);
+
+      const { data: dbAtividades } = await supabaseClient
+        .from("atividades")
+        .select("id, turma_id")
+        .in("turma_id", dbTurmas.map(t => t.id));
+
+      for (const t of dbTurmas) {
+        const alunosDaTurma = dbAlunosCount?.filter(a => a.turma_id === t.id).length || 0;
+        totalAlunos += alunosDaTurma;
+
+        const atividadeIds = dbAtividades?.filter(act => act.turma_id === t.id).map(act => act.id) || [];
+        
+        let mediaGeral = 0;
+        let participacao = 0;
+
+        if (atividadeIds.length > 0 && dbCorrecoes) {
+          const correcoesDaTurma = dbCorrecoes.filter(cor => {
+            const act = dbAtividades?.find(a => a.id === cor.atividade_id);
+            return act ? act.turma_id === t.id : false;
+          });
+          const corrigidas = correcoesDaTurma.filter(cor => cor.status === "corrigida" && cor.nota !== null);
+          
+          if (corrigidas.length > 0) {
+            mediaGeral = corrigidas.reduce((sum, cor) => sum + (cor.nota || 0), 0) / corrigidas.length;
+            somaMedias += mediaGeral;
+            turmasComNotas++;
+          }
+
+          const entregues = correcoesDaTurma.filter(cor => cor.status !== "pendente").length;
+          const totalEsperado = alunosDaTurma * atividadeIds.length;
+          participacao = totalEsperado > 0 ? Math.round((entregues / totalEsperado) * 100) : 0;
+        }
+
+        turmasReais.push({
+          nome: t.nome,
+          alunos: alunosDaTurma,
+          mediaGeral: parseFloat(mediaGeral.toFixed(1)),
+          participacao: participacao || 0
+        });
+      }
+    }
+
+    // 2. Atividades pendentes real
+    const { count: pendentesCount } = await supabaseClient
+      .from("correcoes")
+      .select("*", { count: "exact", head: true })
+      .eq("professor_id", user.id)
+      .eq("status", "pendente");
+
+    const atividadesPendentes = pendentesCount || 0;
+    const mediaGeralProfessor = turmasComNotas > 0 ? parseFloat((somaMedias / turmasComNotas).toFixed(1)) : 0;
+
+    // 3. Taxa de entrega geral
+    let taxaEntrega = 0;
+    const { data: todasCorrecoes } = await supabaseClient
+      .from("correcoes")
+      .select("status")
+      .eq("professor_id", user.id);
+
+    if (todasCorrecoes && todasCorrecoes.length > 0) {
+      const entregues = todasCorrecoes.filter(c => c.status !== "pendente").length;
+      taxaEntrega = Math.round((entregues / todasCorrecoes.length) * 100);
+    }
+
     const contextoDados = {
-      turmas: [
-        { nome: "Matemática - 8º Ano", alunos: 28, mediaGeral: 7.8, participacao: 85 },
-        { nome: "Português - 9º Ano", alunos: 25, mediaGeral: 8.2, participacao: 92 },
-        { nome: "Ciências - 7º Ano", alunos: 30, mediaGeral: 7.5, participacao: 78 },
-        { nome: "História - 9º Ano", alunos: 27, mediaGeral: 6.8, participacao: 72 }
-      ],
-      atividadesPendentes: 8,
-      totalAlunos: 110,
-      mediaGeralProfessor: 7.6,
-      taxaEntrega: 85,
+      turmas: turmasReais,
+      atividadesPendentes,
+      totalAlunos,
+      mediaGeralProfessor,
+      taxaEntrega,
       periodo
     };
 
@@ -1875,18 +1960,74 @@ app.post("/make-server-7f151d2a/openai/analisar-turma", async (c) => {
     const body = await c.req.json();
     const { turmaId, turmaNome, periodo = '30dias' } = body;
 
+    const supabaseClient = getSupabaseClient();
+
+    // 1. Buscar a turma
+    const { data: dbTurma } = await supabaseClient
+      .from("turmas")
+      .select("*")
+      .eq("id", turmaId)
+      .single();
+
+    // 2. Buscar alunos desta turma
+    const { data: dbAlunos } = await supabaseClient
+      .from("alunos")
+      .select("id, nome, status")
+      .eq("turma_id", turmaId);
+
+    // 3. Buscar todas as atividades da turma
+    const { data: dbAtividades } = await supabaseClient
+      .from("atividades")
+      .select("id")
+      .eq("turma_id", turmaId);
+
+    // 4. Buscar correções da turma
+    let dbCorrecoes: any[] = [];
+    if (dbAtividades && dbAtividades.length > 0) {
+      const { data } = await supabaseClient
+        .from("correcoes")
+        .select("aluno_id, nota, status")
+        .in("atividade_id", dbAtividades.map(act => act.id));
+      dbCorrecoes = data || [];
+    }
+
+    const totalAlunos = dbAlunos?.length || 0;
+    
+    // Mapear alunos com notas reais
+    const alunosReais = dbAlunos?.map(aluno => {
+      const notasAluno = dbCorrecoes
+        .filter(c => c.aluno_id === aluno.id && c.status === "corrigida" && c.nota !== null)
+        .map(c => c.nota);
+      const mediaAluno = notasAluno.length > 0 ? notasAluno.reduce((sum, n) => sum + (n || 0), 0) / notasAluno.length : null;
+      return {
+        nome: aluno.nome,
+        nota: mediaAluno !== null ? parseFloat(mediaAluno.toFixed(1)) : 0,
+        frequencia: 100
+      };
+    }) || [];
+
+    // Calcular média geral da turma
+    const corrigidasNotas = dbCorrecoes.filter(c => c.status === "corrigida" && c.nota !== null).map(c => c.nota);
+    const mediaGeral = corrigidasNotas.length > 0 
+      ? parseFloat((corrigidasNotas.reduce((sum, n) => sum + (n || 0), 0) / corrigidasNotas.length).toFixed(1)) 
+      : 0;
+
+    // Calcular taxa de entrega
+    let taxaEntrega = 0;
+    if (dbAlunos && dbAlunos.length > 0 && dbAtividades && dbAtividades.length > 0) {
+      const entregas = dbCorrecoes.filter(c => c.status !== "pendente").length;
+      const totalEsperado = dbAlunos.length * dbAtividades.length;
+      taxaEntrega = totalEsperado > 0 ? Math.round((entregas / totalEsperado) * 100) : 0;
+    }
+
     const dadosTurma = {
-      nome: turmaNome || "Matemática - 8º Ano",
-      totalAlunos: 28,
-      mediaGeral: 7.8,
-      frequenciaMedia: 92,
-      taxaEntrega: 85,
-      participacaoMedia: 78,
-      alunos: [
-        { nome: "Ana Silva", nota: 9.2, frequencia: 98 },
-        { nome: "Daniel Costa", nota: 6.2, frequencia: 78 },
-        { nome: "Felipe Rocha", nota: 5.8, frequencia: 72 }
-      ]
+      nome: dbTurma?.nome || turmaNome || "Turma Sem Nome",
+      totalAlunos,
+      mediaGeral,
+      frequenciaMedia: 100,
+      taxaEntrega,
+      participacaoMedia: taxaEntrega,
+      alunos: alunosReais
     };
 
     const prompt = `Analise esta turma e retorne JSON:
@@ -1954,14 +2095,83 @@ app.post("/make-server-7f151d2a/openai/priorizar-turmas", async (c) => {
       return c.json({ error: "OpenAI não configurada" }, 400);
     }
 
-    // Dados simulados de turmas (em produção viriam do banco)
-    const turmas = [
-      { nome: "Matemática - 8º Ano", mediaGeral: 7.8, frequencia: 92, taxaEntrega: 85, alunosRisco: 2 },
-      { nome: "Português - 9º Ano", mediaGeral: 8.5, frequencia: 95, taxaEntrega: 90, alunosRisco: 1 },
-      { nome: "Ciências - 7º Ano", mediaGeral: 6.2, frequencia: 78, taxaEntrega: 70, alunosRisco: 5 },
-      { nome: "História - 8º Ano", mediaGeral: 7.5, frequencia: 88, taxaEntrega: 82, alunosRisco: 2 },
-      { nome: "Geografia - 9º Ano", mediaGeral: 5.8, frequencia: 72, taxaEntrega: 65, alunosRisco: 7 }
-    ];
+    const supabaseClient = getSupabaseClient();
+
+    // 1. Buscar turmas
+    const { data: dbTurmas } = await supabaseClient
+      .from("turmas")
+      .select("id, nome, total_alunos")
+      .eq("professor_id", user.id);
+
+    const turmasReais = [];
+
+    if (dbTurmas && dbTurmas.length > 0) {
+      const turmaIds = dbTurmas.map(t => t.id);
+
+      // Buscar alunos
+      const { data: dbAlunos } = await supabaseClient
+        .from("alunos")
+        .select("id, nome, turma_id")
+        .in("turma_id", turmaIds);
+
+      // Buscar atividades
+      const { data: dbAtividades } = await supabaseClient
+        .from("atividades")
+        .select("id, turma_id")
+        .in("turma_id", turmaIds);
+
+      // Buscar correções
+      const { data: dbCorrecoes } = await supabaseClient
+        .from("correcoes")
+        .select("aluno_id, nota, status, atividade_id")
+        .eq("professor_id", user.id);
+
+      for (const t of dbTurmas) {
+        const alunosDaTurma = dbAlunos?.filter(a => a.turma_id === t.id) || [];
+        const atividadeIds = dbAtividades?.filter(act => act.turma_id === t.id).map(act => act.id) || [];
+        
+        let mediaGeral = 0;
+        let taxaEntrega = 0;
+        let alunosRisco = 0;
+
+        if (dbCorrecoes) {
+          const correcoesDaTurma = dbCorrecoes.filter(cor => {
+            const act = dbAtividades?.find(a => a.id === cor.atividade_id);
+            return act ? act.turma_id === t.id : false;
+          });
+          const corrigidas = correcoesDaTurma.filter(cor => cor.status === "corrigida" && cor.nota !== null);
+          
+          if (corrigidas.length > 0) {
+            mediaGeral = corrigidas.reduce((sum, cor) => sum + (cor.nota || 0), 0) / corrigidas.length;
+          }
+
+          // Calcular alunos em risco (média abaixo de 6.0)
+          for (const aluno of alunosDaTurma) {
+            const notasAluno = correcoesDaTurma
+              .filter(c => c.aluno_id === aluno.id && c.status === "corrigida" && c.nota !== null)
+              .map(c => c.nota);
+            const mediaAluno = notasAluno.length > 0 ? notasAluno.reduce((sum, n) => sum + (n || 0), 0) / notasAluno.length : 0;
+            if (mediaAluno > 0 && mediaAluno < 6.0) {
+              alunosRisco++;
+            }
+          }
+
+          const entregues = correcoesDaTurma.filter(cor => cor.status !== "pendente").length;
+          const totalEsperado = alunosDaTurma.length * atividadeIds.length;
+          taxaEntrega = totalEsperado > 0 ? Math.round((entregues / totalEsperado) * 100) : 0;
+        }
+
+        turmasReais.push({
+          nome: t.nome,
+          mediaGeral: parseFloat(mediaGeral.toFixed(1)),
+          frequencia: 100,
+          taxaEntrega: taxaEntrega || 0,
+          alunosRisco
+        });
+      }
+    }
+
+    const turmas = turmasReais;
 
     const prompt = `Analise estas turmas e priorize as que precisam de atenção urgente. Retorne JSON:
 

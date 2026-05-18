@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -22,6 +22,7 @@ import {
 import { toast } from '../components/ui/Toast';
 import { analisarDesempenho, gerarComentarioBoletim } from '../services/openaiService';
 import { useConfig } from '../../contexts/ConfigContext';
+import { supabase } from '../../lib/supabase';
 
 interface Boletim {
   id: string;
@@ -53,83 +54,105 @@ export default function RelatoriosEBoletins() {
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [boletimSelecionado, setBoletimSelecionado] = useState<Boletim | null>(null);
 
-  const boletins: Boletim[] = [
-    {
-      id: '1',
-      aluno: 'João Lima',
-      turma: 'Matemática - 8º Ano',
-      mediaFinal: 8.5,
-      statusEnvio: 'Enviado',
-      periodo: '1º Bimestre',
-      observacao: 'Ótimo desempenho em todas as avaliações',
-      frequencia: 95,
-      participacao: 90,
-      notasPorBimestre: [7.5, 8.0, 8.5, 9.0]
-    },
-    {
-      id: '2',
-      aluno: 'Maria Souza',
-      turma: 'Português - 9º Ano',
-      mediaFinal: 7.2,
-      statusEnvio: 'Enviado',
-      periodo: '1º Bimestre',
-      observacao: 'Bom aproveitamento, pode melhorar na escrita',
-      frequencia: 88,
-      participacao: 75,
-      notasPorBimestre: [7.0, 7.2, 7.5, 7.8]
-    },
-    {
-      id: '3',
-      aluno: 'Pedro Santos',
-      turma: 'Matemática - 8º Ano',
-      mediaFinal: 5.8,
-      statusEnvio: 'Pendente',
-      periodo: '1º Bimestre',
-      observacao: 'Requer atenção e acompanhamento especial',
-      frequencia: 72,
-      participacao: 55,
-      notasPorBimestre: [6.0, 5.5, 5.8, 6.2]
-    },
-    {
-      id: '4',
-      aluno: 'Ana Costa',
-      turma: 'Ciências - 7º Ano',
-      mediaFinal: 9.1,
-      statusEnvio: 'Enviado',
-      periodo: '1º Bimestre',
-      observacao: 'Excelente participação e dedicação',
-      frequencia: 98,
-      participacao: 95,
-      notasPorBimestre: [9.0, 9.2, 9.1, 9.0]
-    },
-    {
-      id: '5',
-      aluno: 'Carlos Oliveira',
-      turma: 'História - 9º Ano',
-      mediaFinal: 6.5,
-      statusEnvio: 'Enviado',
-      periodo: '2º Bimestre',
-      observacao: 'Evolução positiva no bimestre',
-      frequencia: 85,
-      participacao: 70,
-      notasPorBimestre: [5.5, 6.0, 6.5, 7.0]
-    },
-    {
-      id: '6',
-      aluno: 'Eduarda Lima',
-      turma: 'Geografia - 7º Ano',
-      mediaFinal: 4.8,
-      statusEnvio: 'Erro',
-      periodo: '1º Bimestre',
-      observacao: 'Necessita recuperação urgente',
-      frequencia: 68,
-      participacao: 45,
-      notasPorBimestre: [5.0, 4.5, 4.8, 5.2]
-    },
-  ];
+  const [boletins, setBoletins] = useState<Boletim[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const turmas = Array.from(new Set(boletins.map(b => b.turma)));
-  const periodos = Array.from(new Set(boletins.map(b => b.periodo)));
+  useEffect(() => {
+    async function carregarDadosReais() {
+      try {
+        setLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: dbTurmas, error: turmasErr } = await supabase
+          .from('turmas')
+          .select('id, nome')
+          .eq('professor_id', user.id);
+
+        if (turmasErr || !dbTurmas) throw turmasErr || new Error('Nenhuma turma encontrada');
+
+        const turmaIds = dbTurmas.map(t => t.id);
+        if (turmaIds.length === 0) {
+          setBoletins([]);
+          return;
+        }
+
+        const { data: dbAlunos } = await supabase
+          .from('alunos')
+          .select('id, nome, turma_id')
+          .in('turma_id', turmaIds);
+
+        const { data: dbAtividades } = await supabase
+          .from('atividades')
+          .select('id, nome, turma_id')
+          .in('turma_id', turmaIds);
+
+        const { data: dbCorrecoes } = await supabase
+          .from('correcoes')
+          .select('aluno_id, nota, status, atividade_id')
+          .eq('professor_id', user.id);
+
+        const listBoletins: Boletim[] = [];
+
+        if (dbAlunos && dbAlunos.length > 0) {
+          dbAlunos.forEach((aluno) => {
+            const turma = dbTurmas.find(t => t.id === aluno.turma_id);
+            const nomeTurma = turma ? turma.nome : 'Turma Sem Nome';
+
+            const correcoesAluno = dbCorrecoes?.filter(c => c.aluno_id === aluno.id) || [];
+            const corrigidas = correcoesAluno.filter(c => c.status === 'corrigida' && c.nota !== null);
+
+            const mediaFinal = corrigidas.length > 0
+              ? parseFloat((corrigidas.reduce((sum, c) => sum + (c.nota || 0), 0) / corrigidas.length).toFixed(1))
+              : 0;
+
+            const frequencia = 100;
+            const totalAtividades = dbAtividades?.filter(a => a.turma_id === aluno.turma_id).length || 1;
+            const participacao = corrigidas.length > 0 ? Math.round((corrigidas.length / totalAtividades) * 100) : 0;
+
+            const notasExistentes = corrigidas.map(c => c.nota || 0);
+            const notasPorBimestre = [
+              notasExistentes[0] ?? 0,
+              notasExistentes[1] ?? 0,
+              notasExistentes[2] ?? 0,
+              notasExistentes[3] ?? 0
+            ];
+
+            let observacao = 'Excelente participação e dedicação';
+            if (mediaFinal < 6) {
+              observacao = 'Necessita de acompanhamento e recuperação de notas';
+            } else if (mediaFinal < 7.5) {
+              observacao = 'Bom aproveitamento, com potencial de evolução';
+            }
+
+            listBoletins.push({
+              id: aluno.id,
+              aluno: aluno.nome,
+              turma: nomeTurma,
+              mediaFinal,
+              statusEnvio: 'Pendente',
+              periodo: '1º Bimestre',
+              observacao,
+              frequencia,
+              participacao: Math.min(participacao, 100),
+              notasPorBimestre
+            });
+          });
+        }
+
+        setBoletins(listBoletins);
+      } catch (err) {
+        console.error('Erro ao carregar boletins reais:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    carregarDadosReais();
+  }, []);
+
+  const turmas = useMemo(() => Array.from(new Set(boletins.map(b => b.turma))), [boletins]);
+  const periodos = useMemo(() => Array.from(new Set(boletins.map(b => b.periodo))), [boletins]);
 
   const boletinsFiltrados = useMemo(() => {
     return boletins.filter((boletim) => {
@@ -142,11 +165,26 @@ export default function RelatoriosEBoletins() {
     });
   }, [boletins, busca, filtroPeriodo, filtroStatus, filtroTurma]);
 
-  const mediaGeral = boletinsFiltrados.length > 0
-    ? (boletinsFiltrados.reduce((acc, b) => acc + b.mediaFinal, 0) / boletinsFiltrados.length).toFixed(1)
-    : '0.0';
+  const mediaGeral = useMemo(() => {
+    return boletinsFiltrados.length > 0
+      ? (boletinsFiltrados.reduce((acc, b) => acc + b.mediaFinal, 0) / boletinsFiltrados.length).toFixed(1)
+      : '0.0';
+  }, [boletinsFiltrados]);
 
-  const alunosAbaixoMedia = boletinsFiltrados.filter((b) => b.mediaFinal < 6).length;
+  const alunosAbaixoMedia = useMemo(() => {
+    return boletinsFiltrados.filter((b) => b.mediaFinal < 6).length;
+  }, [boletinsFiltrados]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-secondary mb-2" />
+        <p className="text-muted-foreground text-sm">Carregando relatórios e boletins...</p>
+      </div>
+    );
+  }
+
+
 
   const handleEnviarEmLote = () => {
     const pendentes = boletinsFiltrados.filter(b => b.statusEnvio === 'Pendente');

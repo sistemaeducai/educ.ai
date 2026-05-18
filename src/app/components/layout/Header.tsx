@@ -61,7 +61,7 @@ export function Header() {
     }
   ]);
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, usuario } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const handleLogout = async () => {
@@ -214,8 +214,12 @@ export function Header() {
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-3 hover:bg-muted rounded-lg px-3 py-2 transition-colors"
             >
-              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                <User className="h-5 w-5 text-muted-foreground" />
+              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                {usuario?.avatar_url ? (
+                  <img src={usuario.avatar_url} alt="Foto de perfil" className="h-full w-full object-cover" />
+                ) : (
+                  <User className="h-5 w-5 text-muted-foreground" />
+                )}
               </div>
             </button>
 
@@ -228,8 +232,8 @@ export function Header() {
                 />
                 <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-lg z-20 overflow-hidden">
                   <div className="p-3 border-b border-border">
-                    <p className="text-sm font-semibold text-foreground">Professor José Silva</p>
-                    <p className="text-xs text-muted-foreground">jose.silva@escola.edu.br</p>
+                    <p className="text-sm font-semibold text-foreground">{usuario?.nome || 'Usuário'}</p>
+                    <p className="text-xs text-muted-foreground">{usuario?.email || ''}</p>
                   </div>
                   <div className="py-2">
                     <Link

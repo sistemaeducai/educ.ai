@@ -319,7 +319,7 @@ app.get("/make-server-7f151d2a/config", async (c) => {
     }
 
     // Buscar todas as configurações do sistema
-    const configs = await kv.getByPrefix("config:");
+    const configs = await kv.getEntriesByPrefix("config:");
     
     // Converter para objeto
     const configObj: Record<string, any> = {};

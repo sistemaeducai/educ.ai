@@ -378,10 +378,10 @@ export default function TermosDeUso() {
           </p>
           <div className="space-y-2 text-foreground">
             <p>
-              <strong>E-mail Jurídico:</strong> juridico@estudai.com.br
+              <strong>E-mail Jurídico:</strong> juridico@educai.com.br
             </p>
             <p>
-              <strong>Suporte Técnico:</strong> suporte@estudai.com.br
+              <strong>Suporte Técnico:</strong> suporte@educai.com.br
             </p>
             <p>
               <strong>Telefone:</strong> (11) 3000-0000

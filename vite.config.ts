@@ -19,4 +19,21 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  build: {
+    // Code splitting por vendor para reduzir bundle principal
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-charts': ['recharts'],
+          'vendor-motion': ['framer-motion', 'motion'],
+          'vendor-ui': ['lucide-react', 'sonner', 'date-fns'],
+        },
+      },
+    },
+    // Aumentar limite de aviso (bundle atual tem chunks grandes por causa das libs)
+    chunkSizeWarningLimit: 600,
+  },
 })

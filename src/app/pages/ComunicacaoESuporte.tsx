@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
@@ -8,19 +8,59 @@ import { MessageSquare, Send, User, Users, Sparkles, Loader2, AlertCircle } from
 import { toast } from '../components/ui/Toast';
 import { gerarFeedback } from '../services/openaiService';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useDados } from '../../contexts/DadosContext';
+import { supabase } from '../../lib/supabase';
 
 export default function ComunicacaoESuporte() {
   const [feedbackTipo, setFeedbackTipo] = useState<'individual' | 'global'>('individual');
   const [categoria, setCategoria] = useState('');
   const [mensagem, setMensagem] = useState('');
   
-  // IA Integration
+  // IA and Supabase contexts
   const { config } = useConfig();
+  const { usuario } = useAuth();
+  const { turmas: dbTurmas, mensagens: dbMensagens, adicionarMensagem } = useDados();
+
   const openaiConfigured = Boolean(config.openai_api_key);
   const [loadingIA, setLoadingIA] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const [feedbackGerado, setFeedbackGerado] = useState('');
   const [alunoSelecionado, setAlunoSelecionado] = useState('');
   const [turmaSelecionada, setTurmaSelecionada] = useState('');
+
+  // Dynamic Alunos state depending on the selected Turma
+  const [alunos, setAlunos] = useState<any[]>([]);
+  const [loadingAlunos, setLoadingAlunos] = useState(false);
+
+  useEffect(() => {
+    if (!turmaSelecionada) {
+      setAlunos([]);
+      setAlunoSelecionado('');
+      return;
+    }
+
+    const buscarAlunos = async () => {
+      try {
+        setLoadingAlunos(true);
+        const { data, error } = await supabase
+          .from('alunos')
+          .select('id, nome')
+          .eq('turma_id', turmaSelecionada)
+          .eq('status', 'ativo')
+          .order('nome');
+
+        if (error) throw error;
+        setAlunos(data || []);
+      } catch (err: any) {
+        console.error('[ComunicacaoESuporte] Erro ao carregar alunos:', err);
+      } finally {
+        setLoadingAlunos(false);
+      }
+    };
+
+    buscarAlunos();
+  }, [turmaSelecionada]);
 
   const handleGerarFeedbackIA = async () => {
     if (!categoria) {
@@ -32,9 +72,12 @@ export default function ComunicacaoESuporte() {
     toast.info('Gerando feedback...', 'A IA está criando o texto. Isso pode levar alguns segundos.');
 
     try {
+      const alunoObj = alunos.find(a => a.id === alunoSelecionado);
+      const turmaObj = dbTurmas.find(t => t.id === turmaSelecionada);
+
       const nomeDestinatario = feedbackTipo === 'individual' 
-        ? (alunoSelecionado || 'Aluno') 
-        : (turmaSelecionada || 'Turma');
+        ? (alunoObj ? alunoObj.nome : 'Aluno') 
+        : (turmaObj ? turmaObj.nome : 'Turma');
 
       const resultado = await gerarFeedback({
         nomeAluno: nomeDestinatario,
@@ -42,7 +85,6 @@ export default function ComunicacaoESuporte() {
         contexto: feedbackTipo === 'individual' ? 'individual' : 'turma',
       });
 
-      // Montar feedback completo
       let feedbackCompleto = '';
       
       if (resultado.feedback.feedbackPositivo) {
@@ -75,6 +117,62 @@ export default function ComunicacaoESuporte() {
     }
   };
 
+  const handleEnviar = async () => {
+    if (!usuario?.id) return;
+    if (!turmaSelecionada) {
+      toast.error('Turma obrigatória', 'Por favor, selecione uma turma.');
+      return;
+    }
+    if (feedbackTipo === 'individual' && !alunoSelecionado) {
+      toast.error('Aluno obrigatório', 'Por favor, selecione um aluno.');
+      return;
+    }
+    if (!categoria) {
+      toast.error('Categoria obrigatória', 'Por favor, selecione uma categoria.');
+      return;
+    }
+    if (!mensagem.trim()) {
+      toast.error('Mensagem obrigatória', 'Por favor, digite a mensagem a ser enviada.');
+      return;
+    }
+
+    try {
+      setEnviando(true);
+      await adicionarMensagem({
+        professor_id: usuario.id,
+        turma_id: turmaSelecionada,
+        aluno_id: feedbackTipo === 'individual' ? alunoSelecionado : null,
+        assunto: `Aviso de ${categoria.charAt(0).toUpperCase() + categoria.slice(1)}`,
+        conteudo: mensagem,
+        tipo: feedbackTipo === 'individual' ? 'individual' : 'turma',
+        lida: false
+      });
+
+      toast.success('Mensagem enviada!', 'A comunicação foi registrada com sucesso.');
+      setMensagem('');
+      setAlunoSelecionado('');
+      setFeedbackGerado('');
+    } catch (err: any) {
+      toast.error('Erro ao enviar', err.message || 'Não foi possível enviar a mensagem.');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const mensagensRecentes = useMemo(() => {
+    return dbMensagens.map(m => {
+      const turmaObj = dbTurmas.find(t => t.id === m.turma_id);
+      return {
+        id: m.id,
+        tipo: m.tipo === 'individual' ? 'Individual' : 'Global',
+        destinatario: m.tipo === 'individual' ? 'Aluno da Turma' : (turmaObj ? turmaObj.nome : 'Turma'),
+        assunto: m.assunto,
+        data: m.created_at ? new Date(m.created_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
+        status: m.lida ? 'Lido' : 'Enviado',
+      };
+    }).slice(0, 5);
+  }, [dbMensagens, dbTurmas]);
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -89,7 +187,10 @@ export default function ComunicacaoESuporte() {
           className={`cursor-pointer hover:shadow-md transition-all ${
             feedbackTipo === 'individual' ? 'border-secondary shadow-md' : ''
           }`}
-          onClick={() => setFeedbackTipo('individual')}
+          onClick={() => {
+            setFeedbackTipo('individual');
+            setAlunoSelecionado('');
+          }}
         >
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
@@ -108,7 +209,10 @@ export default function ComunicacaoESuporte() {
           className={`cursor-pointer hover:shadow-md transition-all ${
             feedbackTipo === 'global' ? 'border-secondary shadow-md' : ''
           }`}
-          onClick={() => setFeedbackTipo('global')}
+          onClick={() => {
+            setFeedbackTipo('global');
+            setAlunoSelecionado('');
+          }}
         >
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
@@ -148,34 +252,37 @@ export default function ComunicacaoESuporte() {
               </CardContent>
             </Card>
           )}
-          
-          {feedbackTipo === 'individual' ? (
-            <Select
-              label="Aluno"
-              required
-              options={[
-                { value: '', label: 'Selecione um aluno...' },
-                { value: '1', label: 'João Lima - 8º A' },
-                { value: '2', label: 'Maria Souza - 8º A' },
-                { value: '3', label: 'Pedro Santos - 8º A' },
-              ]}
-              value={alunoSelecionado}
-              onChange={(e) => setAlunoSelecionado(e.target.value)}
-            />
-          ) : (
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select
               label="Turma"
               required
-              options={[
-                { value: '', label: 'Selecione uma turma...' },
-                { value: '1', label: 'Matemática - 8º Ano' },
-                { value: '2', label: 'Ciências - 7º Ano' },
-                { value: '3', label: 'Física - 3º EM' },
-              ]}
               value={turmaSelecionada}
               onChange={(e) => setTurmaSelecionada(e.target.value)}
-            />
-          )}
+            >
+              <option value="">Selecione uma turma...</option>
+              {dbTurmas.map(t => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
+              ))}
+            </Select>
+
+            {feedbackTipo === 'individual' && (
+              <Select
+                label="Aluno"
+                required
+                disabled={loadingAlunos || !turmaSelecionada}
+                value={alunoSelecionado}
+                onChange={(e) => setAlunoSelecionado(e.target.value)}
+              >
+                <option value="">
+                  {loadingAlunos ? 'Carregando alunos...' : !turmaSelecionada ? 'Selecione a turma primeiro...' : 'Selecione um aluno...'}
+                </option>
+                {alunos.map(a => (
+                  <option key={a.id} value={a.id}>{a.nome}</option>
+                ))}
+              </Select>
+            )}
+          </div>
 
           <Select
             label="Categoria"
@@ -209,7 +316,7 @@ export default function ComunicacaoESuporte() {
               size="sm" 
               className="w-full"
               onClick={handleGerarFeedbackIA}
-              disabled={loadingIA || !openaiConfigured}
+              disabled={loadingIA || !openaiConfigured || (feedbackTipo === 'individual' && !alunoSelecionado) || !turmaSelecionada}
               icon={loadingIA ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             >
               {loadingIA ? 'Gerando...' : 'Gerar Feedback com IA'}
@@ -232,8 +339,13 @@ export default function ComunicacaoESuporte() {
           />
 
           <div className="flex gap-3 pt-4">
-            <Button icon={<Send className="h-4 w-4" />} className="flex-1">
-              Enviar {feedbackTipo === 'individual' ? 'Feedback' : 'Aviso'}
+            <Button 
+              icon={enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} 
+              className="flex-1"
+              onClick={handleEnviar}
+              disabled={enviando}
+            >
+              {enviando ? 'Enviando...' : `Enviar ${feedbackTipo === 'individual' ? 'Feedback' : 'Aviso'}`}
             </Button>
             <Button variant="outline">Salvar Rascunho</Button>
           </div>
@@ -244,48 +356,39 @@ export default function ComunicacaoESuporte() {
       <div>
         <h2 className="text-xl font-semibold text-foreground mb-4">Comunicações Recentes</h2>
         <div className="space-y-3">
-          {[
-            {
-              id: '1',
-              tipo: 'Individual',
-              destinatario: 'João Lima',
-              assunto: 'Parabéns pelo desempenho',
-              data: '20/05/2024',
-              status: 'Enviado',
-            },
-            {
-              id: '2',
-              tipo: 'Global',
-              destinatario: '8º A - Matemática',
-              assunto: 'Aula no laboratório',
-              data: '18/05/2024',
-              status: 'Lido',
-            },
-          ].map((comunicacao) => (
-            <Card key={comunicacao.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-secondary/10 p-2 rounded-lg">
-                      <MessageSquare className="h-5 w-5 text-secondary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-semibold text-sm text-foreground">{comunicacao.assunto}</h4>
-                        <Badge variant="info" className="text-xs">
-                          {comunicacao.tipo}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Para: {comunicacao.destinatario} • {comunicacao.data}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant={comunicacao.status === 'Lido' ? 'success' : 'default'}>{comunicacao.status}</Badge>
-                </div>
+          {mensagensRecentes.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                Nenhuma mensagem enviada recentemente.
               </CardContent>
             </Card>
-          ))}
+          ) : (
+            mensagensRecentes.map((comunicacao) => (
+              <Card key={comunicacao.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-secondary/10 p-2 rounded-lg">
+                        <MessageSquare className="h-5 w-5 text-secondary" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-sm text-foreground">{comunicacao.assunto}</h4>
+                          <Badge variant="info" className="text-xs">
+                            {comunicacao.tipo}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Para: {comunicacao.destinatario} • {comunicacao.data}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant={comunicacao.status === 'Lido' ? 'success' : 'default'}>{comunicacao.status}</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
       </div>
     </div>

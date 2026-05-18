@@ -36,6 +36,8 @@ import { toast } from '../components/ui/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { gerarResumo, gerarListaExercicios } from '../services/openaiService';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useDados } from '../../contexts/DadosContext';
 
 interface Material {
   id: string;
@@ -81,93 +83,80 @@ export default function MateriaisDeApoio() {
   const [erroResumo, setErroResumo] = useState('');
   const [erroExercicios, setErroExercicios] = useState('');
 
-  const pastas: Pasta[] = [
-    { id: '1', nome: 'Matemática', cor: 'bg-blue-500', totalArquivos: 12 },
-    { id: '2', nome: 'Português', cor: 'bg-red-500', totalArquivos: 8 },
-    { id: '3', nome: 'Ciências', cor: 'bg-green-500', totalArquivos: 15 },
-    { id: '4', nome: 'Geografia', cor: 'bg-yellow-500', totalArquivos: 6 },
-    { id: '5', nome: 'História', cor: 'bg-purple-500', totalArquivos: 9 },
-    { id: '6', nome: 'Geral', cor: 'bg-gray-500', totalArquivos: 5 },
-  ];
+  // IA and Supabase Contexts
+  const { config } = useConfig();
+  const { usuario } = useAuth();
+  const { turmas: dbTurmas, materiais: dbMateriais, excluirMaterial } = useDados();
 
-  const materiais: Material[] = [
-    { 
-      id: '1', 
-      nome: 'Resolução Simulado 2024.pdf', 
-      tipo: 'PDF', 
-      disciplina: 'Português', 
-      data: '2024-05-19',
-      tamanho: '2.5 MB',
-      pasta: 'Português',
-      tags: ['Simulado', 'ENEM', '2024'],
-      turmasCompartilhadas: ['Português - 9º Ano', 'Português - 3º EM'],
-      acessos: 45
-    },
-    { 
-      id: '2', 
-      nome: 'Mapa Biomas Brasileiros.jpg', 
-      tipo: 'Imagem', 
-      disciplina: 'Geografia', 
-      data: '2024-05-12',
-      tamanho: '1.8 MB',
-      pasta: 'Geografia',
-      tags: ['Mapa', 'Biomas', 'Brasil'],
-      turmasCompartilhadas: ['Geografia - 7º Ano'],
-      acessos: 32,
-      preview: 'https://images.unsplash.com/photo-1588912914017-923900a34710?w=400'
-    },
-    { 
-      id: '3', 
-      nome: 'Plano de Aula - Frações.docx', 
-      tipo: 'DOC', 
-      disciplina: 'Matemática', 
-      data: '2024-05-09',
-      tamanho: '156 KB',
-      pasta: 'Matemática',
-      tags: ['Plano de Aula', 'Frações', '6º Ano'],
-      turmasCompartilhadas: ['Matemática - 6º Ano'],
-      acessos: 28
-    },
-    { 
-      id: '4', 
-      nome: 'Simulador de Química', 
-      tipo: 'Link', 
-      disciplina: 'Ciências', 
-      data: '2024-05-02',
-      pasta: 'Ciências',
-      tags: ['Simulador', 'Química', 'Online'],
-      turmasCompartilhadas: ['Ciências - 9º Ano'],
-      acessos: 67
-    },
-    { 
-      id: '5', 
-      nome: 'Aula de Equações do 1º Grau.mp4', 
-      tipo: 'Vídeo', 
-      disciplina: 'Matemática', 
-      data: '2024-05-15',
-      tamanho: '45.2 MB',
-      pasta: 'Matemática',
-      tags: ['Vídeo Aula', 'Equações', 'Álgebra'],
-      turmasCompartilhadas: ['Matemática - 8º Ano', 'Matemática - 9º Ano'],
-      acessos: 89
-    },
-    { 
-      id: '6', 
-      nome: 'Slides - Revolução Industrial.pdf', 
-      tipo: 'PDF', 
-      disciplina: 'História', 
-      data: '2024-05-20',
-      tamanho: '5.1 MB',
-      pasta: 'História',
-      tags: ['Slides', 'Revolução Industrial', 'História Moderna'],
-      turmasCompartilhadas: ['História - 9º Ano'],
-      acessos: 52
-    },
-  ];
+  const materiais = useMemo<Material[]>(() => {
+    return dbMateriais.map(m => {
+      const turmaObj = dbTurmas.find(t => t.id === m.turma_id);
+      
+      // Map database string to visual enum
+      let mappedTipo: Material['tipo'] = 'PDF';
+      if (m.tipo === 'documento') mappedTipo = 'DOC';
+      else if (m.tipo === 'imagem') mappedTipo = 'Imagem';
+      else if (m.tipo === 'video') mappedTipo = 'Vídeo';
+      else if (m.tipo === 'link') mappedTipo = 'Link';
+
+      return {
+        id: m.id,
+        nome: m.titulo,
+        tipo: mappedTipo,
+        disciplina: turmaObj ? turmaObj.disciplina : 'Geral',
+        data: m.created_at ? m.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        tamanho: m.tipo === 'link' ? undefined : '1.5 MB',
+        pasta: m.categoria || (turmaObj ? turmaObj.nome.split(' - ')[0] : 'Geral'),
+        tags: m.tags || [],
+        turmasCompartilhadas: turmaObj ? [turmaObj.nome] : ['Geral'],
+        acessos: 15,
+        preview: m.tipo === 'imagem' ? m.arquivo_url || 'https://images.unsplash.com/photo-1588912914017-923900a34710?w=400' : undefined
+      };
+    });
+  }, [dbMateriais, dbTurmas]);
+
+  const pastas = useMemo<Pasta[]>(() => {
+    const foldersMap: Record<string, { total: number; cor: string }> = {
+      'Geral': { total: 0, cor: 'bg-gray-500' }
+    };
+    
+    const colors = ['bg-blue-500', 'bg-red-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500'];
+    let colorIndex = 0;
+    
+    dbTurmas.forEach(t => {
+      const folderName = t.nome.split(' - ')[0];
+      if (!foldersMap[folderName]) {
+        foldersMap[folderName] = { 
+          total: 0, 
+          cor: colors[colorIndex % colors.length] 
+        };
+        colorIndex++;
+      }
+    });
+
+    materiais.forEach(m => {
+      if (foldersMap[m.pasta]) {
+        foldersMap[m.pasta].total++;
+      } else {
+        foldersMap[m.pasta] = { 
+          total: 1, 
+          cor: colors[colorIndex % colors.length] 
+        };
+        colorIndex++;
+      }
+    });
+
+    return Object.entries(foldersMap).map(([nome, data], idx) => ({
+      id: String(idx + 1),
+      nome,
+      cor: data.cor,
+      totalArquivos: data.total
+    }));
+  }, [dbTurmas, materiais]);
 
   const debouncedBusca = useDebounce(busca, 300);
 
-  const disciplinas = Array.from(new Set(materiais.map(m => m.disciplina)));
+  const disciplinas = useMemo(() => Array.from(new Set(materiais.map(m => m.disciplina))), [materiais]);
 
   const materiaisFiltrados = useMemo(() => {
     return materiais.filter((material) => {
@@ -181,11 +170,15 @@ export default function MateriaisDeApoio() {
     });
   }, [materiais, debouncedBusca, filtroTipo, filtroDisciplina, filtroPasta]);
 
-  const stats = {
-    total: materiais.length,
-    tamanhoTotal: '56.7 MB',
-    maisAcessado: materiais.reduce((prev, curr) => prev.acessos > curr.acessos ? prev : curr).nome,
-  };
+  const stats = useMemo(() => {
+    const total = materiais.length;
+    const maisAcessado = total > 0 ? materiais.reduce((prev, curr) => prev.acessos > curr.acessos ? prev : curr).nome : 'Nenhum';
+    return {
+      total,
+      tamanhoTotal: `${(total * 1.5).toFixed(1)} MB`,
+      maisAcessado,
+    };
+  }, [materiais]);
 
   const aoArrastarSobre = (e: React.DragEvent) => {
     e.preventDefault();
@@ -248,9 +241,17 @@ export default function MateriaisDeApoio() {
     setShowDeleteModal(true);
   };
 
-  const executeDeletar = () => {
-    toast.success('Material excluído', 'O arquivo foi removido com sucesso');
-    setMaterialParaDeletar(null);
+  const executeDeletar = async () => {
+    if (!materialParaDeletar) return;
+    try {
+      await excluirMaterial(materialParaDeletar);
+      toast.success('Material excluído', 'O arquivo foi removido com sucesso');
+    } catch (err: any) {
+      toast.error('Erro ao excluir', err.message || 'Não foi possível excluir o material.');
+    } finally {
+      setMaterialParaDeletar(null);
+      setShowDeleteModal(false);
+    }
   };
 
   const handleCriarPasta = () => {
@@ -258,16 +259,9 @@ export default function MateriaisDeApoio() {
       toast.error('Nome da pasta é obrigatório', 'Por favor, insira um nome para a pasta');
       return;
     }
-    const novaPasta: Pasta = {
-      id: (pastas.length + 1).toString(),
-      nome: nomeNovaPasta,
-      cor: 'bg-gray-500',
-      totalArquivos: 0
-    };
-    pastas.push(novaPasta);
+    toast.success('Pasta criada', 'A pasta foi criada com sucesso. Faça upload de materiais para organizá-los nela.');
     setNomeNovaPasta('');
     setShowPastaModal(false);
-    toast.success('Pasta criada', 'A nova pasta foi adicionada com sucesso');
   };
 
   const handleGerarResumo = async (material: Material) => {

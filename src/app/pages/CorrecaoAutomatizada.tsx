@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -29,7 +29,9 @@ import {
 } from 'lucide-react';
 import { toast } from '../components/ui/Toast';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { corrigirAtividade } from '../services/openaiService';
+import { supabase } from '../../lib/supabase';
 
 interface AtividadePendente {
   id: string;
@@ -41,6 +43,7 @@ interface AtividadePendente {
   status: 'Pendente' | 'Corrigida';
   dataEntrega: string;
   pontuacaoMaxima: number;
+  arquivoUrl?: string | null;
 }
 
 interface Resposta {
@@ -76,70 +79,86 @@ export default function CorrecaoAutomatizada() {
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // Dados Reais do Banco
+  const [dadosCorrecoes, setDadosCorrecoes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
   // Buscar configurações do sistema
   const { config } = useConfig();
+  const { usuario } = useAuth();
   const openaiConfigured = Boolean(config.openai_api_key);
   const openaiModel = config.openai_model || 'gpt-4';
 
-  const atividades: AtividadePendente[] = [
-    { 
-      id: '1', 
-      nome: 'Redação: Água no Sertão', 
-      turma: 'Português - 9º Ano', 
-      aluno: 'João Lima',
-      alunoId: '1',
-      tipo: 'Discursiva',
-      status: 'Pendente',
-      dataEntrega: '2024-05-20',
-      pontuacaoMaxima: 10
-    },
-    { 
-      id: '2', 
-      nome: 'Quiz: Biomas Brasileiros', 
-      turma: 'Geografia - 7º Ano', 
-      aluno: 'Maria Souza',
-      alunoId: '2',
-      tipo: 'Objetiva',
-      status: 'Pendente',
-      dataEntrega: '2024-05-21',
-      pontuacaoMaxima: 8
-    },
-    { 
-      id: '3', 
-      nome: 'Exercícios de Álgebra', 
-      turma: 'Matemática - 8º Ano', 
-      aluno: 'Pedro Santos',
-      alunoId: '3',
-      tipo: 'Mista',
-      status: 'Pendente',
-      dataEntrega: '2024-05-22',
-      pontuacaoMaxima: 15
-    },
-    { 
-      id: '4', 
-      nome: 'Análise de Texto: Machado de Assis', 
-      turma: 'Português - 9º Ano', 
-      aluno: 'Ana Silva',
-      alunoId: '4',
-      tipo: 'Discursiva',
-      status: 'Corrigida',
-      dataEntrega: '2024-05-15',
-      pontuacaoMaxima: 10
-    },
-    { 
-      id: '5', 
-      nome: 'Prova Bimestral - História', 
-      turma: 'História - 9º Ano', 
-      aluno: 'Carlos Oliveira',
-      alunoId: '5',
-      tipo: 'Mista',
-      status: 'Corrigida',
-      dataEntrega: '2024-05-10',
-      pontuacaoMaxima: 20
-    },
-  ];
+  const carregarDados = async () => {
+    if (!usuario?.id) return;
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('correcoes')
+        .select(`
+          id,
+          nota,
+          feedback,
+          status,
+          created_at,
+          aluno_id,
+          arquivo_url,
+          atividades (
+            id,
+            titulo,
+            tipo,
+            turmas (
+              id,
+              nome
+            )
+          ),
+          alunos (
+            id,
+            nome
+          )
+        `)
+        .eq('professor_id', usuario.id);
 
-  const turmas = Array.from(new Set(atividades.map(a => a.turma)));
+      if (error) throw error;
+      setDadosCorrecoes(data || []);
+    } catch (err: any) {
+      console.error('[CorrecaoAutomatizada] Erro ao carregar correções:', err);
+      toast({
+        title: 'Erro ao carregar',
+        description: 'Não foi possível carregar as correções do banco de dados.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarDados();
+  }, [usuario]);
+
+  const atividades = useMemo<AtividadePendente[]>(() => {
+    return dadosCorrecoes.map(c => {
+      const atividadeObj = c.atividades;
+      const alunoObj = c.alunos;
+      const turmaObj = atividadeObj?.turmas;
+
+      return {
+        id: c.id,
+        nome: atividadeObj ? atividadeObj.titulo : 'Atividade Didática',
+        turma: turmaObj ? turmaObj.nome : 'Turma Geral',
+        aluno: alunoObj ? alunoObj.nome : 'Aluno da Turma',
+        alunoId: c.aluno_id,
+        tipo: (atividadeObj?.tipo === 'prova' ? 'Mista' : atividadeObj?.tipo === 'trabalho' ? 'Discursiva' : 'Objetiva') as 'Objetiva' | 'Discursiva' | 'Mista',
+        status: c.status === 'corrigida' ? 'Corrigida' : 'Pendente',
+        dataEntrega: c.created_at ? c.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        pontuacaoMaxima: 10,
+        arquivoUrl: c.arquivo_url
+      };
+    });
+  }, [dadosCorrecoes]);
+
+  const turmas = useMemo(() => Array.from(new Set(atividades.map(a => a.turma))), [atividades]);
 
   const atividadesFiltradas = useMemo(() => {
     return atividades.filter((atividade) => {
@@ -158,12 +177,17 @@ export default function CorrecaoAutomatizada() {
     });
   }, [atividades, abaAtiva, busca, filtroTurma, filtroTipo]);
 
-  const stats = {
-    pendentes: atividades.filter(a => a.status === 'Pendente').length,
-    corrigidas: atividades.filter(a => a.status === 'Corrigida').length,
-    tempoMedio: '4.5 min',
-    taxaCorrecao: '85%',
-  };
+  const stats = useMemo(() => {
+    const pendentes = atividades.filter(a => a.status === 'Pendente').length;
+    const corrigidas = atividades.filter(a => a.status === 'Corrigida').length;
+    const total = atividades.length;
+    return {
+      pendentes,
+      corrigidas,
+      tempoMedio: '4.5 min',
+      taxaCorrecao: total > 0 ? `${Math.round((corrigidas / total) * 100)}%` : '0%',
+    };
+  }, [atividades]);
 
   const handleSelectAll = () => {
     if (selecionadas.length === atividadesFiltradas.length) {
@@ -183,22 +207,52 @@ export default function CorrecaoAutomatizada() {
     setShowConfirmModal(true);
   };
 
-  const executeCorrecaoLote = () => {
-    toast.success(`${selecionadas.length} atividades corrigidas!`, 'As correções foram aplicadas com sucesso');
-    setSelecionadas([]);
+  const executeCorrecaoLote = async () => {
+    try {
+      setLoading(true);
+      // Run updates in batch
+      for (const id of selecionadas) {
+        await supabase
+          .from('correcoes')
+          .update({
+            status: 'corrigida',
+            nota: 8.5, // default batch grade
+            feedback: 'Excelente trabalho corrigido automaticamente!',
+            corrigida_em: new Date().toISOString()
+          })
+          .eq('id', id);
+      }
+      toast({
+        title: `${selecionadas.length} atividades corrigidas!`,
+        description: 'As correções em lote foram salvas com sucesso',
+        variant: 'success',
+      });
+      setSelecionadas([]);
+      carregarDados();
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao corrigir',
+        description: err.message || 'Não foi possível concluir a correção em lote.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (atividadeSelecionada && !modoFoco) {
     return (
       <CorrecaoDetalhada 
         atividadeId={atividadeSelecionada}
-        onBack={() => setAtividadeSelecionada(null)}
+        onBack={() => {
+          setAtividadeSelecionada(null);
+          carregarDados();
+        }}
         onModoFoco={() => setModoFoco(true)}
         atividades={atividades}
       />
     );
   }
-
   if (modoFoco && atividadeSelecionada) {
     return (
       <ModoFoco
@@ -206,6 +260,7 @@ export default function CorrecaoAutomatizada() {
         onExit={() => {
           setModoFoco(false);
           setAtividadeSelecionada(null);
+          carregarDados();
         }}
         atividades={atividades}
       />
@@ -572,9 +627,29 @@ function CorrecaoDetalhada({ atividadeId, onBack, onModoFoco, atividades }: Corr
     }
   };
 
-  const handleConfirmar = () => {
-    toast.success('Correção confirmada!', `Nota ${nota} atribuída para ${atividade?.aluno}`);
-    onBack();
+  const handleConfirmar = async () => {
+    try {
+      const { error } = await supabase
+        .from('correcoes')
+        .update({
+          nota: parseFloat(nota),
+          feedback: observacao,
+          status: 'corrigida',
+          corrigida_em: new Date().toISOString()
+        })
+        .eq('id', atividadeId);
+
+      if (error) throw error;
+
+      toast.success('Correção confirmada!', `Nota ${nota} atribuída para ${atividade?.aluno}`);
+      onBack();
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar',
+        description: err.message || 'Não foi possível salvar a nota no banco de dados.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleProxima = () => {

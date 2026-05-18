@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { toast } from '../components/ui/Toast';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useDados } from '../../contexts/DadosContext';
 import { gerarPlanoDeAula } from '../services/openaiService';
 
 interface PlanoDeAula {
@@ -48,47 +50,22 @@ export default function PlanosDeAula() {
   const [filtroAno, setFiltroAno] = useState('todos');
   const [filtroStatus, setFiltroStatus] = useState('todos');
 
-  const planos: PlanoDeAula[] = [
-    {
-      id: '1',
-      nome: 'Introdução à Álgebra',
-      disciplina: 'Matemática',
-      ano: '8º Ano',
-      data: '2024-05-15',
-      status: 'Publicado',
-      tags: ['BNCC', 'Álgebra', 'Equações']
-    },
-    {
-      id: '2',
-      nome: 'Sistema Solar e Planetas',
-      disciplina: 'Ciências',
-      ano: '6º Ano',
-      data: '2024-05-18',
-      status: 'Publicado',
-      tags: ['BNCC', 'Astronomia']
-    },
-    {
-      id: '3',
-      nome: 'Revolução Industrial',
-      disciplina: 'História',
-      ano: '9º Ano',
-      data: '2024-05-20',
-      status: 'Rascunho',
-      tags: ['BNCC', 'História Moderna']
-    },
-    {
-      id: '4',
-      nome: 'Funções do 1º Grau',
-      disciplina: 'Matemática',
-      ano: '9º Ano',
-      data: '2024-05-22',
-      status: 'Publicado',
-      tags: ['BNCC', 'Funções', 'Gráficos']
-    },
-  ];
+  const { planos: dbPlanosAula, excluirPlano } = useDados();
 
-  const disciplinas = Array.from(new Set(planos.map(p => p.disciplina)));
-  const anos = Array.from(new Set(planos.map(p => p.ano)));
+  const planos = useMemo<PlanoDeAula[]>(() => {
+    return dbPlanosAula.map(p => ({
+      id: p.id,
+      nome: p.titulo,
+      disciplina: p.disciplina,
+      ano: p.serie,
+      data: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+      status: 'Publicado',
+      tags: p.competencias_bncc || ['BNCC']
+    }));
+  }, [dbPlanosAula]);
+
+  const disciplinas = useMemo(() => Array.from(new Set(planos.map(p => p.disciplina))), [planos]);
+  const anos = useMemo(() => Array.from(new Set(planos.map(p => p.ano))), [planos]);
 
   const planosFiltrados = useMemo(() => {
     return planos.filter((plano) => {
@@ -107,6 +84,23 @@ export default function PlanosDeAula() {
       description: 'O plano foi copiado como rascunho',
       variant: 'success',
     });
+  };
+
+  const handleExcluir = async (id: string) => {
+    try {
+      await excluirPlano(id);
+      toast({
+        title: 'Plano de aula excluído!',
+        description: 'O plano foi removido com sucesso',
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir',
+        description: err.message || 'Ocorreu um erro ao excluir o plano de aula.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -144,9 +138,10 @@ export default function PlanosDeAula() {
           disciplinas={disciplinas}
           anos={anos}
           onDuplicar={handleDuplicar}
+          onExcluir={handleExcluir}
         />
       ) : (
-        <CriarPlano />
+        <CriarPlano onSuccess={() => setViewMode('listar')} />
       )}
     </div>
   );
@@ -165,6 +160,7 @@ interface ListarPlanosProps {
   disciplinas: string[];
   anos: string[];
   onDuplicar: (id: string) => void;
+  onExcluir: (id: string) => void;
 }
 
 function ListarPlanos({
@@ -180,6 +176,7 @@ function ListarPlanos({
   disciplinas,
   anos,
   onDuplicar,
+  onExcluir,
 }: ListarPlanosProps) {
   return (
     <div className="space-y-6">
@@ -287,6 +284,15 @@ function ListarPlanos({
                   >
                     Duplicar
                   </Button>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    icon={<Trash2 className="h-3 w-3 text-destructive" />} 
+                    onClick={() => onExcluir(plano.id)}
+                    className="flex-1 hover:bg-destructive/10"
+                  >
+                    Excluir
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -312,9 +318,16 @@ function ListarPlanos({
   );
 }
 
-function CriarPlano() {
+interface CriarPlanoProps {
+  onSuccess: () => void;
+}
+
+function CriarPlano({ onSuccess }: CriarPlanoProps) {
   const { config } = useConfig();
+  const { usuario } = useAuth();
+  const { adicionarPlano } = useDados();
   const openaiConfigured = Boolean(config.openai_api_key);
+  const [salvando, setSalvando] = useState(false);
   
   const [formData, setFormData] = useState({
     nome: '',
@@ -404,12 +417,54 @@ function CriarPlano() {
     }
   };
 
+  const handleSalvarPlano = async (status: 'Rascunho' | 'Publicado') => {
+    if (!formData.nome || !formData.componenteCurricular || !formData.anoEscolar) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Por favor, preencha o nome, disciplina e ano escolar.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      await adicionarPlano({
+        titulo: formData.nome,
+        disciplina: formData.componenteCurricular,
+        serie: formData.anoEscolar,
+        duracao: '50 min',
+        objetivo: formData.objetivos || 'Objetivos gerais de aprendizagem',
+        conteudo: formData.conteudo || 'Conteúdo programático',
+        metodologia: formData.metodologia || 'Metodologia ativa',
+        recursos: formData.materiaisVinculados ? [formData.materiaisVinculados] : [],
+        avaliacao: formData.avaliacao || 'Avaliação formativa',
+        competencias_bncc: formData.tags,
+        observacoes: formData.descricao || '',
+        professor_id: usuario?.id || '',
+        turma_id: null
+      });
+
+      toast({
+        title: status === 'Rascunho' ? 'Rascunho salvo!' : 'Plano publicado!',
+        description: 'O plano de aula foi registrado com sucesso.',
+        variant: 'success',
+      });
+
+      onSuccess();
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar plano',
+        description: err.message || 'Ocorreu um erro ao salvar o plano de aula.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   const handleSalvarRascunho = () => {
-    toast({
-      title: 'Rascunho salvo!',
-      description: 'Seu plano foi salvo automaticamente',
-      variant: 'success',
-    });
+    handleSalvarPlano('Rascunho');
   };
 
   const handleGerarComIA = async () => {
@@ -657,11 +712,11 @@ function CriarPlano() {
             />
 
             <div className="flex gap-3 pt-4">
-              <Button className="flex-1" onClick={handleSalvarRascunho}>
-                Salvar como Rascunho
+              <Button className="flex-1" onClick={handleSalvarRascunho} disabled={salvando}>
+                {salvando ? 'Salvando...' : 'Salvar como Rascunho'}
               </Button>
-              <Button variant="outline" className="flex-1">
-                Publicar Plano
+              <Button variant="outline" className="flex-1" onClick={() => handleSalvarPlano('Publicado')} disabled={salvando}>
+                {salvando ? 'Salvando...' : 'Publicar Plano'}
               </Button>
             </div>
           </CardContent>

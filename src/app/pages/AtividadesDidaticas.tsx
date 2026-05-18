@@ -37,6 +37,8 @@ import {
   gerarAtividadeCompleta 
 } from '../services/openaiService';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useDados } from '../../contexts/DadosContext';
 
 interface Atividade {
   id: string;
@@ -67,6 +69,9 @@ export default function AtividadesDidaticas() {
   
   // IA Integration States
   const { config } = useConfig();
+  const { usuario } = useAuth();
+  const { turmas: dbTurmas, atividades: dbAtividades, excluirAtividade } = useDados();
+
   const openaiConfigured = Boolean(config.openai_api_key);
   const [showModalIA, setShowModalIA] = useState(false);
   const [loadingIA, setLoadingIA] = useState(false);
@@ -79,83 +84,30 @@ export default function AtividadesDidaticas() {
     dificuldade: 'media' as 'facil' | 'media' | 'dificil',
   });
 
-  const atividades: Atividade[] = [
-    { 
-      id: '1', 
-      nome: 'Quiz sobre Ecossistemas', 
-      turma: 'Ciências - 7º Ano', 
-      disciplina: 'Ciências',
-      tipo: 'Objetiva', 
-      dataEntrega: '2024-05-25', 
-      dataCriacao: '2024-05-15',
-      status: 'Ativa',
-      pontuacao: 10,
-      entregues: 22,
-      totalAlunos: 30,
-      temAnexos: false
-    },
-    { 
-      id: '2', 
-      nome: 'Redação: Impactos Ambientais', 
-      turma: 'Português - 9º Ano', 
-      disciplina: 'Português',
-      tipo: 'Discursiva', 
-      dataEntrega: '2024-05-28', 
-      dataCriacao: '2024-05-18',
-      status: 'Ativa',
-      pontuacao: 15,
-      entregues: 18,
-      totalAlunos: 28,
-      temAnexos: true
-    },
-    { 
-      id: '3', 
-      nome: 'Exercícios de Álgebra', 
-      turma: 'Matemática - 8º Ano', 
-      disciplina: 'Matemática',
-      tipo: 'Mista', 
-      dataEntrega: '2024-05-30', 
-      dataCriacao: '2024-05-10',
-      status: 'Rascunho',
-      pontuacao: 20,
-      entregues: 0,
-      totalAlunos: 28,
-      temAnexos: false
-    },
-    { 
-      id: '4', 
-      nome: 'Prova Bimestral - História', 
-      turma: 'História - 9º Ano', 
-      disciplina: 'História',
-      tipo: 'Mista', 
-      dataEntrega: '2024-05-22', 
-      dataCriacao: '2024-05-01',
-      status: 'Concluída',
-      pontuacao: 25,
-      entregues: 26,
-      totalAlunos: 26,
-      temAnexos: true
-    },
-    { 
-      id: '5', 
-      nome: 'Trabalho em Grupo - Biomas', 
-      turma: 'Geografia - 7º Ano', 
-      disciplina: 'Geografia',
-      tipo: 'Discursiva', 
-      dataEntrega: '2024-06-05', 
-      dataCriacao: '2024-05-20',
-      status: 'Ativa',
-      pontuacao: 30,
-      entregues: 8,
-      totalAlunos: 24,
-      temAnexos: true
-    },
-  ];
+  const atividades = useMemo<Atividade[]>(() => {
+    return dbAtividades.map(a => {
+      const turmaObj = dbTurmas.find(t => t.id === a.turma_id);
+      return {
+        id: a.id,
+        nome: a.titulo,
+        turma: turmaObj ? turmaObj.nome : 'Turma Geral',
+        disciplina: turmaObj ? turmaObj.disciplina : 'Geral',
+        tipo: (a.tipo || 'Objetiva') as 'Objetiva' | 'Discursiva' | 'Mista',
+        dataEntrega: a.data_entrega ? a.data_entrega.split('T')[0] : new Date().toISOString().split('T')[0],
+        dataCriacao: a.created_at ? a.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        status: (a.status || 'Ativa') as 'Ativa' | 'Rascunho' | 'Concluída',
+        pontuacao: a.pontuacao || 10,
+        entregues: 0,
+        totalAlunos: turmaObj ? turmaObj.total_alunos || 0 : 0,
+        temAnexos: false
+      };
+    });
+  }, [dbAtividades, dbTurmas]);
 
   const debouncedBusca = useDebounce(busca, 300);
 
-  const turmas = Array.from(new Set(atividades.map(a => a.turma)));
-  const disciplinas = Array.from(new Set(atividades.map(a => a.disciplina)));
+  const turmas = useMemo(() => Array.from(new Set(atividades.map(a => a.turma))), [atividades]);
+  const disciplinas = useMemo(() => Array.from(new Set(atividades.map(a => a.disciplina))), [atividades]);
 
   const atividadesFiltradas = useMemo(() => {
     return atividades.filter((atividade) => {
@@ -196,6 +148,15 @@ export default function AtividadesDidaticas() {
 
   const handleDuplicar = (id: string) => {
     toast.success('Atividade duplicada!', 'A atividade foi copiada como rascunho');
+  };
+
+  const handleExcluir = async (id: string) => {
+    try {
+      await excluirAtividade(id);
+      toast.success('Atividade excluída!', 'A atividade foi removida com sucesso');
+    } catch (err: any) {
+      toast.error('Erro ao excluir', err.message || 'Não foi possível excluir a atividade.');
+    }
   };
   
   // Handler para gerar questões com IA
@@ -579,6 +540,7 @@ export default function AtividadesDidaticas() {
                           <Copy className="h-4 w-4 text-foreground" />
                         </button>
                         <button
+                          onClick={() => handleExcluir(atividade.id)}
                           className="p-2 hover:bg-muted rounded-lg transition-colors"
                           title="Excluir"
                         >

@@ -1,307 +1,371 @@
 // ===================================
-// CONTEXTO DE DADOS GLOBAIS
-// Gerencia todos os dados do sistema
+// CONTEXTO DE DADOS GLOBAIS — EDUC.AI
+// Migrado de localStorage → Supabase
 // ===================================
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type {
-  Turma,
-  Aluno,
-  Marco,
-  PlanoDeAula,
-  Material,
-  Atividade,
-  Feedback,
-  Boletim,
-} from '../types';
-import {
-  turmasStorage,
-  alunosStorage,
-  marcosStorage,
-  planosStorage,
-  materiaisStorage,
-  atividadesStorage,
-  feedbacksStorage,
-  boletinsStorage,
-} from '../services/storage';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 
+// Serviços Supabase
+import { TurmasService } from '../services/turmas.service';
+import { AlunosService } from '../services/alunos.service';
+import { MarcosService } from '../services/marcos.service';
+import { PlanosAulaService } from '../services/planos-aula.service';
+import { MateriaisService } from '../services/materiais.service';
+import { AtividadesService } from '../services/atividades.service';
+import { MensagensService } from '../services/mensagens.service';
+import { CorrecoesService } from '../services/correcoes.service';
+
+// Tipos vindos do Supabase (database.types.ts)
+import type { Database } from '../lib/database.types';
+
+type Turma = Database['public']['Tables']['turmas']['Row'];
+type TurmaInsert = Database['public']['Tables']['turmas']['Insert'];
+type TurmaUpdate = Database['public']['Tables']['turmas']['Update'];
+
+type Aluno = Database['public']['Tables']['alunos']['Row'];
+type AlunoInsert = Database['public']['Tables']['alunos']['Insert'];
+type AlunoUpdate = Database['public']['Tables']['alunos']['Update'];
+
+type Marco = Database['public']['Tables']['marcos']['Row'];
+type MarcoInsert = Database['public']['Tables']['marcos']['Insert'];
+type MarcoUpdate = Database['public']['Tables']['marcos']['Update'];
+
+type PlanoAula = Database['public']['Tables']['planos_aula']['Row'];
+type PlanoAulaInsert = Database['public']['Tables']['planos_aula']['Insert'];
+type PlanoAulaUpdate = Database['public']['Tables']['planos_aula']['Update'];
+
+type Material = Database['public']['Tables']['materiais']['Row'];
+type MaterialInsert = Database['public']['Tables']['materiais']['Insert'];
+type MaterialUpdate = Database['public']['Tables']['materiais']['Update'];
+
+type Atividade = Database['public']['Tables']['atividades']['Row'];
+type AtividadeInsert = Database['public']['Tables']['atividades']['Insert'];
+type AtividadeUpdate = Database['public']['Tables']['atividades']['Update'];
+
+type Mensagem = Database['public']['Tables']['mensagens']['Row'];
+type MensagemInsert = Database['public']['Tables']['mensagens']['Insert'];
+
+type Correcao = Database['public']['Tables']['correcoes']['Row'];
+type CorrecaoInsert = Database['public']['Tables']['correcoes']['Insert'];
+type CorrecaoUpdate = Database['public']['Tables']['correcoes']['Update'];
+
+// ============ INTERFACE DO CONTEXTO ============
+
 interface DadosContextData {
+  // Estado geral
+  carregando: boolean;
+
   // Turmas
   turmas: Turma[];
-  carregarTurmas: () => void;
-  adicionarTurma: (turma: Turma) => void;
-  atualizarTurma: (id: string, dados: Partial<Turma>) => void;
-  excluirTurma: (id: string) => void;
+  carregarTurmas: () => Promise<void>;
+  adicionarTurma: (turma: TurmaInsert) => Promise<Turma>;
+  atualizarTurma: (id: string, dados: TurmaUpdate) => Promise<void>;
+  excluirTurma: (id: string) => Promise<void>;
   obterTurma: (id: string) => Turma | undefined;
 
   // Alunos
   alunos: Aluno[];
-  carregarAlunos: (turmaId?: string) => Aluno[];
-  adicionarAluno: (aluno: Aluno) => void;
-  atualizarAluno: (id: string, dados: Partial<Aluno>) => void;
-  excluirAluno: (id: string) => void;
+  carregarAlunos: (turmaId?: string) => Promise<Aluno[]>;
+  adicionarAluno: (aluno: AlunoInsert) => Promise<Aluno>;
+  atualizarAluno: (id: string, dados: AlunoUpdate) => Promise<void>;
+  excluirAluno: (id: string, turmaId: string) => Promise<void>;
 
-  // Marcos
+  // Marcos (Linha do Tempo)
   marcos: Marco[];
-  carregarMarcos: (turmaId: string) => Marco[];
-  adicionarMarco: (marco: Marco) => void;
-  atualizarMarco: (id: string, dados: Partial<Marco>) => void;
-  excluirMarco: (id: string) => void;
+  carregarMarcos: (turmaId: string) => Promise<Marco[]>;
+  adicionarMarco: (marco: MarcoInsert) => Promise<Marco>;
+  atualizarMarco: (id: string, dados: MarcoUpdate) => Promise<void>;
+  excluirMarco: (id: string) => Promise<void>;
 
   // Planos de Aula
-  planos: PlanoDeAula[];
-  carregarPlanos: () => void;
-  adicionarPlano: (plano: PlanoDeAula) => void;
-  atualizarPlano: (id: string, dados: Partial<PlanoDeAula>) => void;
-  excluirPlano: (id: string) => void;
+  planos: PlanoAula[];
+  carregarPlanos: () => Promise<void>;
+  adicionarPlano: (plano: PlanoAulaInsert) => Promise<PlanoAula>;
+  atualizarPlano: (id: string, dados: PlanoAulaUpdate) => Promise<void>;
+  excluirPlano: (id: string) => Promise<void>;
 
   // Materiais
   materiais: Material[];
-  carregarMateriais: () => void;
-  adicionarMaterial: (material: Material) => void;
-  atualizarMaterial: (id: string, dados: Partial<Material>) => void;
-  excluirMaterial: (id: string) => void;
+  carregarMateriais: (turmaId?: string) => Promise<void>;
+  adicionarMaterial: (material: MaterialInsert) => Promise<Material>;
+  atualizarMaterial: (id: string, dados: MaterialUpdate) => Promise<void>;
+  excluirMaterial: (id: string) => Promise<void>;
 
   // Atividades
   atividades: Atividade[];
-  carregarAtividades: (turmaId?: string) => void;
-  adicionarAtividade: (atividade: Atividade) => void;
-  atualizarAtividade: (id: string, dados: Partial<Atividade>) => void;
-  excluirAtividade: (id: string) => void;
+  carregarAtividades: (turmaId?: string) => Promise<void>;
+  adicionarAtividade: (atividade: AtividadeInsert) => Promise<Atividade>;
+  atualizarAtividade: (id: string, dados: AtividadeUpdate) => Promise<void>;
+  excluirAtividade: (id: string) => Promise<void>;
 
-  // Feedbacks
-  feedbacks: Feedback[];
-  carregarFeedbacks: (turmaId?: string) => void;
-  adicionarFeedback: (feedback: Feedback) => void;
+  // Mensagens / Comunicação
+  mensagens: Mensagem[];
+  carregarMensagens: (turmaId?: string) => Promise<void>;
+  adicionarMensagem: (mensagem: MensagemInsert) => Promise<Mensagem>;
+  excluirMensagem: (id: string) => Promise<void>;
 
-  // Boletins
-  boletins: Boletim[];
-  carregarBoletins: (turmaId?: string) => void;
-  adicionarBoletim: (boletim: Boletim) => void;
+  // Correções
+  correcoes: Correcao[];
+  carregarCorrecoes: (atividadeId: string) => Promise<void>;
+  adicionarCorrecao: (correcao: CorrecaoInsert) => Promise<Correcao>;
+  atualizarCorrecao: (id: string, dados: CorrecaoUpdate) => Promise<void>;
 }
 
 const DadosContext = createContext<DadosContextData>({} as DadosContextData);
 
 export function DadosProvider({ children }: { children: ReactNode }) {
-  const [turmas, setTurmas] = useState<Turma[]>([]);
-  const [alunos, setAlunos] = useState<Aluno[]>([]);
-  const [marcos, setMarcos] = useState<Marco[]>([]);
-  const [planos, setPlanos] = useState<PlanoDeAula[]>([]);
-  const [materiais, setMateriais] = useState<Material[]>([]);
-  const [atividades, setAtividades] = useState<Atividade[]>([]);
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [boletins, setBoletins] = useState<Boletim[]>([]);
-
   const { usuario } = useAuth();
   const professorId = usuario?.id ?? null;
 
+  const [carregando, setCarregando] = useState(false);
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [alunos, setAlunos] = useState<Aluno[]>([]);
+  const [marcos, setMarcos] = useState<Marco[]>([]);
+  const [planos, setPlanos] = useState<PlanoAula[]>([]);
+  const [materiais, setMateriais] = useState<Material[]>([]);
+  const [atividades, setAtividades] = useState<Atividade[]>([]);
+  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const [correcoes, setCorrecoes] = useState<Correcao[]>([]);
+
+  // Carregar dados iniciais quando o professor logar
   useEffect(() => {
     if (professorId) {
       carregarTurmas();
       carregarPlanos();
       carregarMateriais();
       carregarAtividades();
+      carregarMensagens();
     }
   }, [professorId]);
 
   // ============ TURMAS ============
 
-  function carregarTurmas() {
+  const carregarTurmas = useCallback(async () => {
     if (!professorId) return;
-    const turmasCarregadas = turmasStorage.listar(professorId);
-    setTurmas(turmasCarregadas);
-  }
+    try {
+      setCarregando(true);
+      const data = await TurmasService.listar(professorId);
+      setTurmas(data);
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar turmas:', err);
+    } finally {
+      setCarregando(false);
+    }
+  }, [professorId]);
 
-  function adicionarTurma(turma: Turma) {
-    turmasStorage.salvar(turma);
-    setTurmas((prev) => [...prev, turma]);
-  }
+  const adicionarTurma = useCallback(async (turma: TurmaInsert): Promise<Turma> => {
+    const nova = await TurmasService.criar(turma);
+    setTurmas(prev => [nova, ...prev]);
+    return nova;
+  }, []);
 
-  function atualizarTurma(id: string, dados: Partial<Turma>) {
-    const turma = turmasStorage.obterPorId(id);
-    if (!turma) return;
+  const atualizarTurma = useCallback(async (id: string, dados: TurmaUpdate): Promise<void> => {
+    const atualizada = await TurmasService.atualizar(id, dados);
+    setTurmas(prev => prev.map(t => t.id === id ? atualizada : t));
+  }, []);
 
-    const turmaAtualizada = { ...turma, ...dados, dataUltimaModificacao: new Date() };
-    turmasStorage.salvar(turmaAtualizada);
-    setTurmas((prev) => prev.map((t) => (t.id === id ? turmaAtualizada : t)));
-  }
+  const excluirTurma = useCallback(async (id: string): Promise<void> => {
+    await TurmasService.deletar(id);
+    setTurmas(prev => prev.filter(t => t.id !== id));
+  }, []);
 
-  function excluirTurma(id: string) {
-    turmasStorage.excluir(id);
-    setTurmas((prev) => prev.filter((t) => t.id !== id));
-  }
-
-  function obterTurma(id: string): Turma | undefined {
-    return turmas.find((t) => t.id === id);
-  }
+  const obterTurma = useCallback((id: string): Turma | undefined => {
+    return turmas.find(t => t.id === id);
+  }, [turmas]);
 
   // ============ ALUNOS ============
 
-  function carregarAlunos(turmaId?: string): Aluno[] {
-    const alunosCarregados = alunosStorage.listar(turmaId);
-    setAlunos(alunosCarregados);
-    return alunosCarregados;
-  }
+  const carregarAlunos = useCallback(async (turmaId?: string): Promise<Aluno[]> => {
+    if (!turmaId) return [];
+    try {
+      const data = await AlunosService.listarPorTurma(turmaId);
+      setAlunos(data);
+      return data;
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar alunos:', err);
+      return [];
+    }
+  }, []);
 
-  function adicionarAluno(aluno: Aluno) {
-    alunosStorage.salvar(aluno);
-    setAlunos((prev) => [...prev, aluno]);
-  }
+  const adicionarAluno = useCallback(async (aluno: AlunoInsert): Promise<Aluno> => {
+    const novo = await AlunosService.criar(aluno);
+    setAlunos(prev => [...prev, novo]);
+    return novo;
+  }, []);
 
-  function atualizarAluno(id: string, dados: Partial<Aluno>) {
-    const aluno = alunosStorage.obterPorId(id);
-    if (!aluno) return;
+  const atualizarAluno = useCallback(async (id: string, dados: AlunoUpdate): Promise<void> => {
+    const atualizado = await AlunosService.atualizar(id, dados);
+    setAlunos(prev => prev.map(a => a.id === id ? atualizado : a));
+  }, []);
 
-    const alunoAtualizado = { ...aluno, ...dados };
-    alunosStorage.salvar(alunoAtualizado);
-    setAlunos((prev) => prev.map((a) => (a.id === id ? alunoAtualizado : a)));
-  }
-
-  function excluirAluno(id: string) {
-    alunosStorage.excluir(id);
-    setAlunos((prev) => prev.filter((a) => a.id !== id));
-  }
+  const excluirAluno = useCallback(async (id: string, turmaId: string): Promise<void> => {
+    await AlunosService.deletar(id, turmaId);
+    setAlunos(prev => prev.filter(a => a.id !== id));
+  }, []);
 
   // ============ MARCOS ============
 
-  function carregarMarcos(turmaId: string): Marco[] {
-    const marcosCarregados = marcosStorage.listar(turmaId);
-    setMarcos(marcosCarregados);
-    return marcosCarregados;
-  }
+  const carregarMarcos = useCallback(async (turmaId: string): Promise<Marco[]> => {
+    try {
+      const data = await MarcosService.listar(turmaId);
+      setMarcos(data);
+      return data;
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar marcos:', err);
+      return [];
+    }
+  }, []);
 
-  function adicionarMarco(marco: Marco) {
-    marcosStorage.salvar(marco);
-    setMarcos((prev) => [...prev, marco]);
-  }
+  const adicionarMarco = useCallback(async (marco: MarcoInsert): Promise<Marco> => {
+    const novo = await MarcosService.criar(marco);
+    setMarcos(prev => [...prev, novo]);
+    return novo;
+  }, []);
 
-  function atualizarMarco(id: string, dados: Partial<Marco>) {
-    const marcosAtuais = marcosStorage.listar('');
-    const marco = marcosAtuais.find((m) => m.id === id);
-    if (!marco) return;
+  const atualizarMarco = useCallback(async (id: string, dados: MarcoUpdate): Promise<void> => {
+    const atualizado = await MarcosService.atualizar(id, dados);
+    setMarcos(prev => prev.map(m => m.id === id ? atualizado : m));
+  }, []);
 
-    const marcoAtualizado = { ...marco, ...dados };
-    marcosStorage.salvar(marcoAtualizado);
-    setMarcos((prev) => prev.map((m) => (m.id === id ? marcoAtualizado : m)));
-  }
-
-  function excluirMarco(id: string) {
-    marcosStorage.excluir(id);
-    setMarcos((prev) => prev.filter((m) => m.id !== id));
-  }
+  const excluirMarco = useCallback(async (id: string): Promise<void> => {
+    await MarcosService.deletar(id);
+    setMarcos(prev => prev.filter(m => m.id !== id));
+  }, []);
 
   // ============ PLANOS DE AULA ============
 
-  function carregarPlanos() {
+  const carregarPlanos = useCallback(async (): Promise<void> => {
     if (!professorId) return;
-    const planosCarregados = planosStorage.listar(professorId);
-    setPlanos(planosCarregados);
-  }
+    try {
+      const data = await PlanosAulaService.listar(professorId);
+      setPlanos(data);
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar planos:', err);
+    }
+  }, [professorId]);
 
-  function adicionarPlano(plano: PlanoDeAula) {
-    planosStorage.salvar(plano);
-    setPlanos((prev) => [...prev, plano]);
-  }
+  const adicionarPlano = useCallback(async (plano: PlanoAulaInsert): Promise<PlanoAula> => {
+    const novo = await PlanosAulaService.criar(plano);
+    setPlanos(prev => [novo, ...prev]);
+    return novo;
+  }, []);
 
-  function atualizarPlano(id: string, dados: Partial<PlanoDeAula>) {
-    const plano = planosStorage.obterPorId(id);
-    if (!plano) return;
+  const atualizarPlano = useCallback(async (id: string, dados: PlanoAulaUpdate): Promise<void> => {
+    const atualizado = await PlanosAulaService.atualizar(id, dados);
+    setPlanos(prev => prev.map(p => p.id === id ? atualizado : p));
+  }, []);
 
-    const planoAtualizado = { ...plano, ...dados, dataUltimaModificacao: new Date() };
-    planosStorage.salvar(planoAtualizado);
-    setPlanos((prev) => prev.map((p) => (p.id === id ? planoAtualizado : p)));
-  }
-
-  function excluirPlano(id: string) {
-    planosStorage.excluir(id);
-    setPlanos((prev) => prev.filter((p) => p.id !== id));
-  }
+  const excluirPlano = useCallback(async (id: string): Promise<void> => {
+    await PlanosAulaService.deletar(id);
+    setPlanos(prev => prev.filter(p => p.id !== id));
+  }, []);
 
   // ============ MATERIAIS ============
 
-  function carregarMateriais() {
+  const carregarMateriais = useCallback(async (turmaId?: string): Promise<void> => {
     if (!professorId) return;
-    const materiaisCarregados = materiaisStorage.listar(professorId);
-    setMateriais(materiaisCarregados);
-  }
+    try {
+      const data = await MateriaisService.listar(professorId, turmaId);
+      setMateriais(data);
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar materiais:', err);
+    }
+  }, [professorId]);
 
-  function adicionarMaterial(material: Material) {
-    materiaisStorage.salvar(material);
-    setMateriais((prev) => [...prev, material]);
-  }
+  const adicionarMaterial = useCallback(async (material: MaterialInsert): Promise<Material> => {
+    const novo = await MateriaisService.criar(material);
+    setMateriais(prev => [novo, ...prev]);
+    return novo;
+  }, []);
 
-  function atualizarMaterial(id: string, dados: Partial<Material>) {
-    const materiaisAtuais = materiaisStorage.listar(professorId ?? '');
-    const material = materiaisAtuais.find((m) => m.id === id);
-    if (!material) return;
+  const atualizarMaterial = useCallback(async (id: string, dados: MaterialUpdate): Promise<void> => {
+    const atualizado = await MateriaisService.atualizar(id, dados);
+    setMateriais(prev => prev.map(m => m.id === id ? atualizado : m));
+  }, []);
 
-    const materialAtualizado = { ...material, ...dados };
-    materiaisStorage.salvar(materialAtualizado);
-    setMateriais((prev) => prev.map((m) => (m.id === id ? materialAtualizado : m)));
-  }
-
-  function excluirMaterial(id: string) {
-    materiaisStorage.excluir(id);
-    setMateriais((prev) => prev.filter((m) => m.id !== id));
-  }
+  const excluirMaterial = useCallback(async (id: string): Promise<void> => {
+    await MateriaisService.deletar(id);
+    setMateriais(prev => prev.filter(m => m.id !== id));
+  }, []);
 
   // ============ ATIVIDADES ============
 
-  function carregarAtividades(turmaId?: string) {
+  const carregarAtividades = useCallback(async (turmaId?: string): Promise<void> => {
     if (!professorId) return;
-    const atividadesCarregadas = atividadesStorage.listar(professorId, turmaId);
-    setAtividades(atividadesCarregadas);
-  }
+    try {
+      const data = await AtividadesService.listar(professorId, turmaId);
+      setAtividades(data);
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar atividades:', err);
+    }
+  }, [professorId]);
 
-  function adicionarAtividade(atividade: Atividade) {
-    atividadesStorage.salvar(atividade);
-    setAtividades((prev) => [...prev, atividade]);
-  }
+  const adicionarAtividade = useCallback(async (atividade: AtividadeInsert): Promise<Atividade> => {
+    const nova = await AtividadesService.criar(atividade);
+    setAtividades(prev => [nova, ...prev]);
+    return nova;
+  }, []);
 
-  function atualizarAtividade(id: string, dados: Partial<Atividade>) {
-    const atividadesAtuais = atividadesStorage.listar(professorId ?? '');
-    const atividade = atividadesAtuais.find((a) => a.id === id);
-    if (!atividade) return;
+  const atualizarAtividade = useCallback(async (id: string, dados: AtividadeUpdate): Promise<void> => {
+    const atualizada = await AtividadesService.atualizar(id, dados);
+    setAtividades(prev => prev.map(a => a.id === id ? atualizada : a));
+  }, []);
 
-    const atividadeAtualizada = { ...atividade, ...dados };
-    atividadesStorage.salvar(atividadeAtualizada);
-    setAtividades((prev) => prev.map((a) => (a.id === id ? atividadeAtualizada : a)));
-  }
+  const excluirAtividade = useCallback(async (id: string): Promise<void> => {
+    await AtividadesService.deletar(id);
+    setAtividades(prev => prev.filter(a => a.id !== id));
+  }, []);
 
-  function excluirAtividade(id: string) {
-    atividadesStorage.excluir(id);
-    setAtividades((prev) => prev.filter((a) => a.id !== id));
-  }
+  // ============ MENSAGENS ============
 
-  // ============ FEEDBACKS ============
-
-  function carregarFeedbacks(turmaId?: string) {
+  const carregarMensagens = useCallback(async (turmaId?: string): Promise<void> => {
     if (!professorId) return;
-    const feedbacksCarregados = feedbacksStorage.listar(professorId, turmaId);
-    setFeedbacks(feedbacksCarregados);
-  }
+    try {
+      const data = await MensagensService.listar(professorId, turmaId);
+      setMensagens(data);
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar mensagens:', err);
+    }
+  }, [professorId]);
 
-  function adicionarFeedback(feedback: Feedback) {
-    feedbacksStorage.salvar(feedback);
-    setFeedbacks((prev) => [...prev, feedback]);
-  }
+  const adicionarMensagem = useCallback(async (mensagem: MensagemInsert): Promise<Mensagem> => {
+    const nova = await MensagensService.criar(mensagem);
+    setMensagens(prev => [nova, ...prev]);
+    return nova;
+  }, []);
 
-  // ============ BOLETINS ============
+  const excluirMensagem = useCallback(async (id: string): Promise<void> => {
+    await MensagensService.deletar(id);
+    setMensagens(prev => prev.filter(m => m.id !== id));
+  }, []);
 
-  function carregarBoletins(turmaId?: string) {
-    const boletinsCarregados = boletinsStorage.listar(turmaId);
-    setBoletins(boletinsCarregados);
-  }
+  // ============ CORREÇÕES ============
 
-  function adicionarBoletim(boletim: Boletim) {
-    boletinsStorage.salvar(boletim);
-    setBoletins((prev) => [...prev, boletim]);
-  }
+  const carregarCorrecoes = useCallback(async (atividadeId: string): Promise<void> => {
+    try {
+      const data = await CorrecoesService.listarPorAtividade(atividadeId);
+      setCorrecoes(data);
+    } catch (err) {
+      console.error('[DadosContext] Erro ao carregar correções:', err);
+    }
+  }, []);
+
+  const adicionarCorrecao = useCallback(async (correcao: CorrecaoInsert): Promise<Correcao> => {
+    const nova = await CorrecoesService.criar(correcao);
+    setCorrecoes(prev => [nova, ...prev]);
+    return nova;
+  }, []);
+
+  const atualizarCorrecao = useCallback(async (id: string, dados: CorrecaoUpdate): Promise<void> => {
+    const atualizada = await CorrecoesService.atualizar(id, dados);
+    setCorrecoes(prev => prev.map(c => c.id === id ? atualizada : c));
+  }, []);
 
   return (
     <DadosContext.Provider
       value={{
+        carregando,
         turmas,
         carregarTurmas,
         adicionarTurma,
@@ -333,12 +397,14 @@ export function DadosProvider({ children }: { children: ReactNode }) {
         adicionarAtividade,
         atualizarAtividade,
         excluirAtividade,
-        feedbacks,
-        carregarFeedbacks,
-        adicionarFeedback,
-        boletins,
-        carregarBoletins,
-        adicionarBoletim,
+        mensagens,
+        carregarMensagens,
+        adicionarMensagem,
+        excluirMensagem,
+        correcoes,
+        carregarCorrecoes,
+        adicionarCorrecao,
+        atualizarCorrecao,
       }}
     >
       {children}

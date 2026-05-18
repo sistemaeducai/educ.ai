@@ -34,6 +34,8 @@ import { exportToCSV } from '../utils/export';
 import { toast } from '../components/ui/Toast';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useDados } from '../../contexts/DadosContext';
 import { sincronizarTurmas, temTokenGoogleValido } from '../services/googleService';
 import { priorizarTurmas, PriorizarTurmasResponse } from '../services/openaiService';
 
@@ -56,6 +58,9 @@ type SortOrder = 'asc' | 'desc';
 export default function Turmas() {
   const navigate = useNavigate();
   const { config } = useConfig();
+  const { usuario } = useAuth();
+  const { turmas: dbTurmas, adicionarTurma, excluirTurma } = useDados();
+  
   const googleConfigured = Boolean(config.google_client_id);
   const openaiConfigured = Boolean(config.openai_api_key);
   
@@ -68,10 +73,19 @@ export default function Turmas() {
   const [filtroDisciplina, setFiltroDisciplina] = useState<string>('todos');
   const [filtroAno, setFiltroAno] = useState<string>('todos');
   const [loadingSync, setLoadingSync] = useState(false);
+  const [loadingCriar, setLoadingCriar] = useState(false);
+  const [showModalCriar, setShowModalCriar] = useState(false);
+  const [novaTurmaData, setNovaTurmaData] = useState({
+    nome: '',
+    serie: '',
+    disciplina: '',
+    ano_letivo: new Date().getFullYear().toString()
+  });
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     turmaId?: string;
-    action?: 'desativar' | 'ativar' | 'bulkDesativar' | 'bulkAtivar';
+    action?: 'desativar' | 'ativar' | 'bulkDesativar' | 'bulkAtivar' | 'deletar';
   }>({ isOpen: false });
   
   // Estados para Priorização IA
@@ -98,64 +112,82 @@ export default function Turmas() {
     }
   };
 
-  // Dados mock com mais informações
-  const turmas: Turma[] = [
-    { 
-      id: '1', 
-      nome: 'Matemática - 8º Ano', 
-      codigo: 'MAT-8A-2024', 
-      nAlunos: 28, 
+  const handleCriarTurma = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novaTurmaData.nome || !novaTurmaData.serie || !novaTurmaData.disciplina) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Por favor, preencha o nome, série e disciplina.',
+        variant: 'warning'
+      });
+      return;
+    }
+
+    try {
+      setLoadingCriar(true);
+      await adicionarTurma({
+        nome: novaTurmaData.nome,
+        serie: novaTurmaData.serie,
+        disciplina: novaTurmaData.disciplina,
+        ano_letivo: novaTurmaData.ano_letivo,
+        professor_id: usuario?.id || '',
+        total_alunos: 0
+      });
+      toast({
+        title: 'Turma criada!',
+        description: 'A nova turma foi registrada com sucesso.',
+        variant: 'success'
+      });
+      setShowModalCriar(false);
+      setNovaTurmaData({
+        nome: '',
+        serie: '',
+        disciplina: '',
+        ano_letivo: new Date().getFullYear().toString()
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao criar turma',
+        description: err.message || 'Ocorreu um erro ao criar a turma.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingCriar(false);
+    }
+  };
+
+  const handleDeletarTurma = async (id: string) => {
+    try {
+      await excluirTurma(id);
+      toast({
+        title: 'Turma excluída',
+        description: 'A turma foi removida com sucesso',
+        variant: 'success',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir turma',
+        description: err.message || 'Não foi possível excluir a turma.',
+        variant: 'destructive',
+      });
+    }
+    setConfirmModal({ isOpen: false });
+  };
+
+  // Mapear dados do banco de dados para a estrutura esperada pelo componente de UI
+  const turmas = useMemo<Turma[]>(() => {
+    return dbTurmas.map(t => ({
+      id: t.id,
+      nome: t.nome,
+      codigo: t.google_classroom_id || `TRM-${t.id.slice(0, 4).toUpperCase()}`,
+      nAlunos: t.total_alunos || 0,
       status: 'Ativa',
-      disciplina: 'Matemática',
-      ano: '8º Ano',
-      atividadesPendentes: 3,
-      dataCriacao: '2024-01-15'
-    },
-    { 
-      id: '2', 
-      nome: 'Ciências - 7º Ano', 
-      codigo: 'CIE-7B-2024', 
-      nAlunos: 30, 
-      status: 'Ativa',
-      disciplina: 'Ciências',
-      ano: '7º Ano',
+      disciplina: t.disciplina,
+      ano: t.serie,
       atividadesPendentes: 0,
-      dataCriacao: '2024-01-20'
-    },
-    { 
-      id: '3', 
-      nome: 'Física - 3º EM', 
-      codigo: 'FIS-EM3-2024', 
-      nAlunos: 32, 
-      status: 'Ativa',
-      disciplina: 'Física',
-      ano: '3º EM',
-      atividadesPendentes: 5,
-      dataCriacao: '2024-02-01'
-    },
-    { 
-      id: '4', 
-      nome: 'Português - 6º Ano', 
-      codigo: 'POR-6A-2024', 
-      nAlunos: 24, 
-      status: 'Inativa',
-      disciplina: 'Português',
-      ano: '6º Ano',
-      atividadesPendentes: 0,
-      dataCriacao: '2023-12-10'
-    },
-    { 
-      id: '5', 
-      nome: 'História - 9º Ano', 
-      codigo: 'HIS-9A-2024', 
-      nAlunos: 26, 
-      status: 'Ativa',
-      disciplina: 'História',
-      ano: '9º Ano',
-      atividadesPendentes: 2,
-      dataCriacao: '2024-01-18'
-    },
-  ];
+      dataCriacao: t.created_at ? t.created_at.split('T')[0] : new Date().toISOString().split('T')[0]
+    }));
+  }, [dbTurmas]);
 
   // Busca com debounce
   const debouncedSearch = useDebounce(termoDeBusca, 300);
@@ -195,8 +227,8 @@ export default function Turmas() {
   }, [turmas, debouncedSearch, filtroStatus, filtroDisciplina, filtroAno, sortField, sortOrder]);
 
   // Listas únicas para filtros
-  const disciplinas = Array.from(new Set(turmas.map(t => t.disciplina)));
-  const anos = Array.from(new Set(turmas.map(t => t.ano)));
+  const disciplinas = useMemo(() => Array.from(new Set(turmas.map(t => t.disciplina))), [turmas]);
+  const anos = useMemo(() => Array.from(new Set(turmas.map(t => t.ano))), [turmas]);
 
   // Handlers
   const handleSelectAll = () => {
@@ -404,7 +436,7 @@ export default function Turmas() {
             >
               Sincronizar
             </Button>
-            <Button icon={<Plus className="h-4 w-4" />}>Nova Turma</Button>
+            <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowModalCriar(true)}>Nova Turma</Button>
           </div>
         </div>
 
@@ -596,12 +628,12 @@ export default function Turmas() {
                           onClick={() => setConfirmModal({ 
                             isOpen: true, 
                             turmaId: turma.id,
-                            action: turma.status === 'Ativa' ? 'desativar' : 'ativar'
+                            action: 'deletar'
                           })}
                           className="p-2 hover:bg-muted rounded-lg transition-colors"
-                          title={turma.status === 'Ativa' ? 'Desativar' : 'Ativar'}
+                          title="Excluir Turma"
                         >
-                          <Power className={`h-4 w-4 ${turma.status === 'Ativa' ? 'text-destructive' : 'text-success'}`} />
+                          <Power className="h-4 w-4 text-destructive" />
                         </button>
                         <button
                           className="p-2 hover:bg-muted rounded-lg transition-colors"
@@ -716,7 +748,7 @@ export default function Turmas() {
           <p className="text-muted-foreground mb-4">
             Tente ajustar os filtros ou criar uma nova turma
           </p>
-          <Button icon={<Plus className="h-4 w-4" />}>
+          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setShowModalCriar(true)}>
             Nova Turma
           </Button>
         </div>
@@ -849,23 +881,75 @@ export default function Turmas() {
         onConfirm={() => {
           if (confirmModal.action === 'bulkDesativar' || confirmModal.action === 'bulkAtivar') {
             handleBulkAction(confirmModal.action === 'bulkAtivar' ? 'ativar' : 'desativar');
+          } else if (confirmModal.action === 'deletar' && confirmModal.turmaId) {
+            handleDeletarTurma(confirmModal.turmaId);
           } else if (confirmModal.turmaId) {
             handleDesativarTurma(confirmModal.turmaId);
           }
         }}
         title={
-          confirmModal.action?.startsWith('bulk')
+          confirmModal.action === 'deletar'
+            ? 'Excluir turma?'
+            : confirmModal.action?.startsWith('bulk')
             ? `${confirmModal.action === 'bulkAtivar' ? 'Ativar' : 'Desativar'} ${selectedTurmas.length} turmas?`
             : `${confirmModal.action === 'ativar' ? 'Ativar' : 'Desativar'} turma?`
         }
         description={
-          confirmModal.action?.startsWith('bulk')
+          confirmModal.action === 'deletar'
+            ? 'Tem certeza de que deseja excluir permanentemente esta turma? Esta ação não pode ser desfeita.'
+            : confirmModal.action?.startsWith('bulk')
             ? `Você está prestes a ${confirmModal.action === 'bulkAtivar' ? 'ativar' : 'desativar'} ${selectedTurmas.length} turmas selecionadas.`
             : `Tem certeza que deseja ${confirmModal.action === 'ativar' ? 'ativar' : 'desativar'} esta turma?`
         }
-        confirmText={confirmModal.action?.includes('ativar') ? 'Ativar' : 'Desativar'}
-        variant={confirmModal.action?.includes('desativar') ? 'warning' : 'default'}
+        confirmText={confirmModal.action === 'deletar' ? 'Excluir' : confirmModal.action?.includes('ativar') ? 'Ativar' : 'Desativar'}
+        variant={confirmModal.action === 'deletar' || confirmModal.action?.includes('desativar') ? 'warning' : 'default'}
       />
+
+      {/* Modal Criar Turma */}
+      <Modal
+        isOpen={showModalCriar}
+        onClose={() => setShowModalCriar(false)}
+        title="Criar Nova Turma"
+      >
+        <form onSubmit={handleCriarTurma} className="space-y-4">
+          <Input
+            label="Nome da Turma"
+            required
+            placeholder="Ex: Ciências - 7º Ano A"
+            value={novaTurmaData.nome}
+            onChange={(e) => setNovaTurmaData({ ...novaTurmaData, nome: e.target.value })}
+          />
+          <Input
+            label="Série / Ano Escolar"
+            required
+            placeholder="Ex: 7º Ano"
+            value={novaTurmaData.serie}
+            onChange={(e) => setNovaTurmaData({ ...novaTurmaData, serie: e.target.value })}
+          />
+          <Input
+            label="Disciplina"
+            required
+            placeholder="Ex: Ciências"
+            value={novaTurmaData.disciplina}
+            onChange={(e) => setNovaTurmaData({ ...novaTurmaData, disciplina: e.target.value })}
+          />
+          <Input
+            label="Ano Letivo"
+            required
+            placeholder="Ex: 2024"
+            value={novaTurmaData.ano_letivo}
+            onChange={(e) => setNovaTurmaData({ ...novaTurmaData, ano_letivo: e.target.value })}
+          />
+          <div className="flex gap-3 justify-end pt-4 border-t border-border">
+            <Button type="button" variant="outline" onClick={() => setShowModalCriar(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={loadingCriar}>
+              {loadingCriar ? 'Criando...' : 'Criar Turma'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

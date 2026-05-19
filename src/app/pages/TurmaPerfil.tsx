@@ -2,11 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import {
   Users, Calendar, BookOpen, ListChecks, FileText,
-  TrendingUp, TrendingDown, Minus, UserCheck, UserX, Clock,
+  TrendingUp, UserCheck, UserX,
   Search, Plus, ArrowLeft, Loader2, Sparkles, ArrowUpDown,
   Pencil, Trash2,
 } from 'lucide-react';
-import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -24,29 +23,16 @@ import type { Marco } from '../../types';
 import { analisarTurma, AnaliseTurmaResponse, sugerirIntervencoes, SugerirIntervencoesResponse } from '../services/openaiService';
 
 type Aba = 'alunos' | 'linha-do-tempo' | 'planos' | 'atividades' | 'boletim';
-type DesempenhoFilter = 'todos' | 'alto' | 'medio' | 'baixo';
-type SortField = 'nome' | 'nota' | 'frequencia';
-
-interface Aluno {
-  id: string;
-  nome: string;
-  email: string;
-  status: 'Ativo' | 'Inativo';
-  nota: number;
-  frequencia: number;
-  avatar?: string;
-  participacao: number;
-  entregas: number;
-}
 
 export default function TurmaPerfil() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [abaAtiva, setAbaAtiva] = useState<Aba>('alunos');
-  
+
   // Estados para Análise IA
   const { config } = useConfig();
   const { user } = useAuth();
+  const { obterTurma } = useDados();
   const openaiConfigured = Boolean(config.openai_api_key);
   const [showModalAnalise, setShowModalAnalise] = useState(false);
   const [loadingAnalise, setLoadingAnalise] = useState(false);
@@ -58,16 +44,17 @@ export default function TurmaPerfil() {
   const [intervencoes, setIntervencoes] = useState<SugerirIntervencoesResponse | null>(null);
   const [erroIntervencoes, setErroIntervencoes] = useState<string | null>(null);
 
+  const turmaData = obterTurma(id || '');
   const turma = {
     id: id || '',
-    nome: 'Matemática - 8º Ano',
-    codigo: 'MAT-8A-2024',
-    nAlunos: 28,
-    disciplina: 'Matemática',
-    ano: '8º Ano',
+    nome: turmaData?.nome ?? 'Turma',
+    codigo: turmaData?.codigo ?? '',
+    nAlunos: turmaData?.total_alunos ?? 0,
+    disciplina: turmaData?.disciplina ?? '',
+    ano: turmaData?.serie ?? '',
     status: 'Ativa',
   };
-  
+
   const handleAnalisarTurma = async () => {
     try {
       setLoadingAnalise(true);
@@ -96,7 +83,6 @@ export default function TurmaPerfil() {
       setLoadingIntervencoes(true);
       setErroIntervencoes(null);
 
-      // Verificar se há análise e alunos em risco
       if (!analise || !analise.alunosEmRisco || analise.alunosEmRisco.length === 0) {
         toast.warning('Nenhum aluno em risco', 'A análise não identificou alunos que necessitam intervenção');
         return;
@@ -126,81 +112,21 @@ export default function TurmaPerfil() {
     { id: 'boletim' as Aba, label: 'Boletim', icon: FileText },
   ];
 
-  // Estatísticas gerais
   const estatisticas = [
-    { 
-      label: 'Média Geral', 
-      valor: '7.8', 
-      icon: TrendingUp, 
-      cor: 'text-success',
-      bgCor: 'bg-success/10'
-    },
-    { 
-      label: 'Frequência Média', 
-      valor: '92%', 
-      icon: UserCheck, 
-      cor: 'text-secondary',
-      bgCor: 'bg-secondary/10'
-    },
-    { 
-      label: 'Taxa de Entrega', 
-      valor: '85%', 
-      icon: ListChecks, 
-      cor: 'text-primary',
-      bgCor: 'bg-primary/10'
-    },
-    { 
-      label: 'Participação', 
-      valor: '78%', 
-      icon: Users, 
-      cor: 'text-warning',
-      bgCor: 'bg-warning/10'
-    },
+    { label: 'Média Geral', valor: '7.8', icon: TrendingUp, cor: 'text-success', bgCor: 'bg-success/10' },
+    { label: 'Frequência Média', valor: '92%', icon: UserCheck, cor: 'text-secondary', bgCor: 'bg-secondary/10' },
+    { label: 'Taxa de Entrega', valor: '85%', icon: ListChecks, cor: 'text-primary', bgCor: 'bg-primary/10' },
+    { label: 'Participação', valor: '78%', icon: Users, cor: 'text-warning', bgCor: 'bg-warning/10' },
   ];
-
-  const getPrioridadeBadge = (prioridade: 'alta' | 'media' | 'baixa') => {
-    const variants = { alta: 'destructive' as const, media: 'warning' as const, baixa: 'default' as const };
-    return variants[prioridade] || 'default';
-  };
-
-  const getTipoBadge = (tipo: string) => {
-    const variants: Record<string, 'success' | 'info' | 'warning' | 'default'> = {
-      reforco: 'success',
-      metodologia: 'info',
-      conteudo: 'warning',
-      avaliacao: 'default',
-      engajamento: 'info'
-    };
-    return variants[tipo] || 'default';
-  };
-
-  const getMetricaLabel = (metrica: string) => {
-    const labels: Record<string, string> = {
-      excelente: 'Excelente',
-      bom: 'Bom',
-      regular: 'Regular',
-      necessita_melhoria: 'Precisa Melhorar',
-      alto: 'Alto',
-      medio: 'Médio',
-      baixo: 'Baixo',
-      homogenea: 'Homogênea',
-      parcial: 'Parcialmente Homogênea',
-      heterogenea: 'Heterogênea',
-      melhorando: 'Melhorando',
-      estavel: 'Estável',
-      piorando: 'Piorando'
-    };
-    return labels[metrica] || metrica;
-  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
-            onClick={() => navigate('/turmas')} 
+          <Button
+            variant="ghost"
+            onClick={() => navigate('/turmas')}
             icon={<ArrowLeft className="h-4 w-4" />}
           >
             Voltar
@@ -215,8 +141,7 @@ export default function TurmaPerfil() {
             </p>
           </div>
         </div>
-        
-        {/* Botão Analisar com IA */}
+
         {openaiConfigured && (
           <Button
             variant="secondary"
@@ -270,7 +195,7 @@ export default function TurmaPerfil() {
 
       {/* Tab Content */}
       <div>
-        {abaAtiva === 'alunos' && <AlunosTab />}
+        {abaAtiva === 'alunos' && <AlunosTab turmaId={id || ''} />}
         {abaAtiva === 'linha-do-tempo' && <LinhaDoTempoTab turmaId={id || ''} />}
         {abaAtiva === 'planos' && <PlanosTab />}
         {abaAtiva === 'atividades' && <AtividadesTab />}
@@ -306,145 +231,133 @@ export default function TurmaPerfil() {
   );
 }
 
-function AlunosTab() {
+// ─── Aba de Alunos ────────────────────────────────────────────────────────────
+
+function AlunosTab({ turmaId }: { turmaId: string }) {
+  const { alunos, carregarAlunos, adicionarAluno, atualizarAluno, excluirAluno } = useDados();
+  type AlunoRow = (typeof alunos)[number];
+
   const [busca, setBusca] = useState('');
-  const [filtroDesempenho, setFiltroDesempenho] = useState<DesempenhoFilter>('todos');
-  const [sortField, setSortField] = useState<SortField>('nome');
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativo' | 'inativo'>('todos');
+  const [sortField, setSortField] = useState<'nome' | 'matricula'>('nome');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [carregandoAlunos, setCarregandoAlunos] = useState(false);
 
-  const alunos: Aluno[] = [
-    { 
-      id: '1', 
-      nome: 'Ana Silva', 
-      email: 'ana.silva@escola.com', 
-      status: 'Ativo', 
-      nota: 9.5, 
-      frequencia: 95,
-      participacao: 90,
-      entregas: 18,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ana'
-    },
-    { 
-      id: '2', 
-      nome: 'Bruno Santos', 
-      email: 'bruno.santos@escola.com', 
-      status: 'Ativo', 
-      nota: 7.8, 
-      frequencia: 88,
-      participacao: 75,
-      entregas: 15,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Bruno'
-    },
-    { 
-      id: '3', 
-      nome: 'Carla Oliveira', 
-      email: 'carla.oliveira@escola.com', 
-      status: 'Ativo', 
-      nota: 8.5, 
-      frequencia: 92,
-      participacao: 85,
-      entregas: 17,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carla'
-    },
-    { 
-      id: '4', 
-      nome: 'Daniel Costa', 
-      email: 'daniel.costa@escola.com', 
-      status: 'Ativo', 
-      nota: 6.2, 
-      frequencia: 78,
-      participacao: 60,
-      entregas: 12,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Daniel'
-    },
-    { 
-      id: '5', 
-      nome: 'Eduarda Lima', 
-      email: 'eduarda.lima@escola.com', 
-      status: 'Ativo', 
-      nota: 9.0, 
-      frequencia: 96,
-      participacao: 88,
-      entregas: 19,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Eduarda'
-    },
-    { 
-      id: '6', 
-      nome: 'Felipe Rocha', 
-      email: 'felipe.rocha@escola.com', 
-      status: 'Ativo', 
-      nota: 5.8, 
-      frequencia: 72,
-      participacao: 55,
-      entregas: 10,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felipe'
-    },
-  ];
+  const [showModal, setShowModal] = useState(false);
+  const [editando, setEditando] = useState<AlunoRow | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
-  const getDesempenho = (nota: number): 'alto' | 'medio' | 'baixo' => {
-    if (nota >= 8) return 'alto';
-    if (nota >= 6) return 'medio';
-    return 'baixo';
-  };
+  const [form, setForm] = useState({
+    nome: '',
+    matricula: '',
+    email: '',
+    responsavel: '',
+    telefone: '',
+    status: 'ativo' as 'ativo' | 'inativo',
+  });
 
-  const getDesempenhoColor = (desempenho: string) => {
-    switch (desempenho) {
-      case 'alto': return 'success';
-      case 'medio': return 'warning';
-      case 'baixo': return 'danger';
-      default: return 'default';
+  useEffect(() => {
+    if (turmaId) {
+      setCarregandoAlunos(true);
+      carregarAlunos(turmaId).finally(() => setCarregandoAlunos(false));
     }
-  };
+  }, [turmaId]);
 
-  const getFrequenciaBadge = (frequencia: number) => {
-    if (frequencia >= 90) return { variant: 'success' as const, icon: UserCheck, label: 'Excelente' };
-    if (frequencia >= 75) return { variant: 'warning' as const, icon: Clock, label: 'Regular' };
-    return { variant: 'danger' as const, icon: UserX, label: 'Crítica' };
-  };
+  const alunosDaTurma = useMemo(
+    () => alunos.filter(a => a.turma_id === turmaId),
+    [alunos, turmaId]
+  );
 
   const alunosFiltrados = useMemo(() => {
-    let resultado = alunos.filter((aluno) => {
-      const matchBusca = aluno.nome.toLowerCase().includes(busca.toLowerCase()) ||
-                        aluno.email.toLowerCase().includes(busca.toLowerCase());
-      
-      const desempenho = getDesempenho(aluno.nota);
-      const matchDesempenho = filtroDesempenho === 'todos' || desempenho === filtroDesempenho;
-
-      return matchBusca && matchDesempenho;
+    const resultado = alunosDaTurma.filter(a => {
+      const matchBusca =
+        a.nome.toLowerCase().includes(busca.toLowerCase()) ||
+        (a.email ?? '').toLowerCase().includes(busca.toLowerCase()) ||
+        a.matricula.toLowerCase().includes(busca.toLowerCase());
+      const matchStatus = filtroStatus === 'todos' || a.status === filtroStatus;
+      return matchBusca && matchStatus;
     });
-
-    // Ordenação
-    resultado.sort((a, b) => {
-      let comparison = 0;
-      
-      if (sortField === 'nome') {
-        comparison = a.nome.localeCompare(b.nome);
-      } else if (sortField === 'nota') {
-        comparison = a.nota - b.nota;
-      } else if (sortField === 'frequencia') {
-        comparison = a.frequencia - b.frequencia;
-      }
-
-      return sortOrder === 'asc' ? comparison : -comparison;
+    return resultado.sort((a, b) => {
+      const cmp = sortField === 'nome'
+        ? a.nome.localeCompare(b.nome)
+        : a.matricula.localeCompare(b.matricula);
+      return sortOrder === 'asc' ? cmp : -cmp;
     });
+  }, [alunosDaTurma, busca, filtroStatus, sortField, sortOrder]);
 
-    return resultado;
-  }, [alunos, busca, filtroDesempenho, sortField, sortOrder]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortOrder('asc');
-    }
+  const handleSort = (field: 'nome' | 'matricula') => {
+    if (sortField === field) setSortOrder(p => p === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortOrder('asc'); }
   };
 
-  // Dados para gráfico
-  const chartData = alunosFiltrados.slice(0, 6).map(aluno => ({
-    nome: aluno.nome.split(' ')[0],
-    nota: aluno.nota,
-  }));
+  function abrirCriar() {
+    setEditando(null);
+    setForm({ nome: '', matricula: '', email: '', responsavel: '', telefone: '', status: 'ativo' });
+    setShowModal(true);
+  }
+
+  function abrirEditar(aluno: AlunoRow) {
+    setEditando(aluno);
+    setForm({
+      nome: aluno.nome,
+      matricula: aluno.matricula,
+      email: aluno.email ?? '',
+      responsavel: aluno.responsavel ?? '',
+      telefone: aluno.telefone ?? '',
+      status: aluno.status,
+    });
+    setShowModal(true);
+  }
+
+  function fecharModal() {
+    setShowModal(false);
+    setEditando(null);
+  }
+
+  async function salvar() {
+    if (!form.nome.trim() || !form.matricula.trim()) {
+      toast.error('Campos obrigatórios', 'Preencha o nome e a matrícula');
+      return;
+    }
+    try {
+      setSalvando(true);
+      const dados = {
+        nome: form.nome.trim(),
+        matricula: form.matricula.trim(),
+        email: form.email.trim() || null,
+        responsavel: form.responsavel.trim() || null,
+        telefone: form.telefone.trim() || null,
+        status: form.status,
+      };
+      if (editando) {
+        await atualizarAluno(editando.id, dados);
+        toast.success('Aluno atualizado!', 'As alterações foram salvas');
+      } else {
+        await adicionarAluno({ turma_id: turmaId, ...dados });
+        toast.success('Aluno adicionado!', 'O aluno foi cadastrado na turma');
+      }
+      fecharModal();
+    } catch (err: any) {
+      toast.error('Erro ao salvar', err.message || 'Tente novamente');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function confirmarExclusao() {
+    if (!excluindoId) return;
+    try {
+      await excluirAluno(excluindoId, turmaId);
+      toast.success('Aluno removido', 'O aluno foi excluído da turma');
+    } catch (err: any) {
+      toast.error('Erro ao excluir', err.message || 'Tente novamente');
+    } finally {
+      setExcluindoId(null);
+    }
+  }
+
+  const totalAtivos = alunosDaTurma.filter(a => a.status === 'ativo').length;
 
   return (
     <div className="space-y-6">
@@ -453,187 +366,274 @@ function AlunosTab() {
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar aluno por nome ou email..."
+            placeholder="Buscar por nome, email ou matrícula..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             className="pl-9"
           />
         </div>
         <Select
-          value={filtroDesempenho}
-          onValueChange={(value) => setFiltroDesempenho(value as DesempenhoFilter)}
+          value={filtroStatus}
+          onValueChange={(v) => setFiltroStatus(v as 'todos' | 'ativo' | 'inativo')}
         >
-          <option value="todos">Todos os Desempenhos</option>
-          <option value="alto">Alto Desempenho (≥8.0)</option>
-          <option value="medio">Desempenho Médio (6.0-7.9)</option>
-          <option value="baixo">Baixo Desempenho (&lt;6.0)</option>
+          <option value="todos">Todos os Status</option>
+          <option value="ativo">Ativos</option>
+          <option value="inativo">Inativos</option>
         </Select>
       </div>
 
-      {/* Gráfico de Distribuição de Notas */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Distribuição de Notas</CardTitle>
-          <CardDescription>Visualização do desempenho dos alunos</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E8ECEE" />
-              <XAxis dataKey="nome" stroke="#64748B" />
-              <YAxis domain={[0, 10]} stroke="#64748B" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#ffffff', 
-                  border: '1px solid #E8ECEE',
-                  borderRadius: '8px'
-                }}
-              />
-              <Bar dataKey="nota" radius={[8, 8, 0, 0]}>
-                {chartData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.nota >= 8 ? '#10B981' : entry.nota >= 6 ? '#F59E0B' : '#EF4444'} 
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="bg-secondary/10 p-2.5 rounded-lg">
+              <Users className="h-5 w-5 text-secondary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total de Alunos</p>
+              <p className="text-2xl font-bold text-secondary">{alunosDaTurma.length}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="bg-success/10 p-2.5 rounded-lg">
+              <UserCheck className="h-5 w-5 text-success" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Ativos</p>
+              <p className="text-2xl font-bold text-success">{totalAtivos}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="bg-muted p-2.5 rounded-lg">
+              <UserX className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Inativos</p>
+              <p className="text-2xl font-bold text-muted-foreground">{alunosDaTurma.length - totalAtivos}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Lista de Alunos */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Lista de Alunos ({alunosFiltrados.length})</CardTitle>
-            <Button size="sm" icon={<Plus className="h-4 w-4" />}>
+            <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={abrirCriar}>
               Adicionar Aluno
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-border">
-                <tr>
-                  <th 
-                    className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase cursor-pointer hover:bg-muted/30"
-                    onClick={() => handleSort('nome')}
-                  >
-                    <div className="flex items-center gap-2">
-                      Aluno
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th 
-                    className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase cursor-pointer hover:bg-muted/30"
-                    onClick={() => handleSort('nota')}
-                  >
-                    <div className="flex items-center gap-2">
-                      Nota
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th 
-                    className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase cursor-pointer hover:bg-muted/30"
-                    onClick={() => handleSort('frequencia')}
-                  >
-                    <div className="flex items-center gap-2">
-                      Frequência
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase">
-                    Participação
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase">
-                    Entregas
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase">
-                    Desempenho
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {alunosFiltrados.map((aluno) => {
-                  const desempenho = getDesempenho(aluno.nota);
-                  const frequenciaBadge = getFrequenciaBadge(aluno.frequencia);
-                  const FrequenciaIcon = frequenciaBadge.icon;
-
-                  return (
+          {carregandoAlunos ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-secondary" />
+            </div>
+          ) : alunosFiltrados.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-16 w-16 mx-auto opacity-50 mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                {busca || filtroStatus !== 'todos' ? 'Nenhum aluno encontrado' : 'Nenhum aluno cadastrado'}
+              </h3>
+              <p className="mb-4">
+                {busca || filtroStatus !== 'todos'
+                  ? 'Tente ajustar os filtros de busca.'
+                  : 'Clique em "Adicionar Aluno" para cadastrar o primeiro aluno da turma.'}
+              </p>
+              {!busca && filtroStatus === 'todos' && (
+                <Button onClick={abrirCriar} icon={<Plus className="h-4 w-4" />}>
+                  Adicionar Primeiro Aluno
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="border-b border-border">
+                  <tr>
+                    <th
+                      className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase cursor-pointer hover:bg-muted/30"
+                      onClick={() => handleSort('nome')}
+                    >
+                      <div className="flex items-center gap-2">Aluno <ArrowUpDown className="h-3 w-3" /></div>
+                    </th>
+                    <th
+                      className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase cursor-pointer hover:bg-muted/30"
+                      onClick={() => handleSort('matricula')}
+                    >
+                      <div className="flex items-center gap-2">Matrícula <ArrowUpDown className="h-3 w-3" /></div>
+                    </th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase">Responsável</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase">Telefone</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-foreground uppercase">Status</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-foreground uppercase">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {alunosFiltrados.map((aluno) => (
                     <tr key={aluno.id} className="hover:bg-muted/30 transition-colors">
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
-                          <img 
-                            src={aluno.avatar} 
+                          <img
+                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(aluno.nome)}`}
                             alt={aluno.nome}
-                            className="w-10 h-10 rounded-full bg-secondary/10"
+                            className="w-9 h-9 rounded-full bg-secondary/10 shrink-0"
                           />
                           <div>
                             <p className="font-medium text-foreground">{aluno.nome}</p>
-                            <p className="text-xs text-muted-foreground">{aluno.email}</p>
+                            {aluno.email && (
+                              <p className="text-xs text-muted-foreground">{aluno.email}</p>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="py-4 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-lg font-bold ${
-                            aluno.nota >= 8 ? 'text-success' : 
-                            aluno.nota >= 6 ? 'text-warning' : 
-                            'text-destructive'
-                          }`}>
-                            {aluno.nota.toFixed(1)}
-                          </span>
-                          {aluno.nota >= 7 ? (
-                            <TrendingUp className="h-4 w-4 text-success" />
-                          ) : aluno.nota >= 6 ? (
-                            <Minus className="h-4 w-4 text-warning" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-destructive" />
-                          )}
-                        </div>
+                        <span className="font-mono text-sm bg-muted px-2 py-0.5 rounded">{aluno.matricula}</span>
                       </td>
                       <td className="py-4 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{aluno.frequencia}%</span>
-                          <FrequenciaIcon className={`h-4 w-4 ${
-                            frequenciaBadge.variant === 'success' ? 'text-success' :
-                            frequenciaBadge.variant === 'warning' ? 'text-warning' :
-                            'text-destructive'
-                          }`} />
-                        </div>
+                        <span className="text-sm text-muted-foreground">{aluno.responsavel || '—'}</span>
                       </td>
                       <td className="py-4 px-4">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-[80px]">
-                            <div 
-                              className="h-full bg-secondary rounded-full"
-                              style={{ width: `${aluno.participacao}%` }}
-                            />
-                          </div>
-                          <span className="text-sm text-muted-foreground">{aluno.participacao}%</span>
-                        </div>
+                        <span className="text-sm text-muted-foreground">{aluno.telefone || '—'}</span>
                       </td>
                       <td className="py-4 px-4">
-                        <span className="font-medium">{aluno.entregas}/20</span>
-                      </td>
-                      <td className="py-4 px-4">
-                        <Badge variant={getDesempenhoColor(desempenho)}>
-                          {desempenho === 'alto' ? 'Alto' : desempenho === 'medio' ? 'Médio' : 'Baixo'}
+                        <Badge variant={aluno.status === 'ativo' ? 'success' : 'default'}>
+                          {aluno.status === 'ativo' ? 'Ativo' : 'Inativo'}
                         </Badge>
                       </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Pencil className="h-4 w-4" />}
+                            onClick={() => abrirEditar(aluno)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            icon={<Trash2 className="h-4 w-4" />}
+                            onClick={() => setExcluindoId(aluno.id)}
+                          />
+                        </div>
+                      </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Modal Adicionar/Editar Aluno */}
+      <Modal isOpen={showModal} onClose={fecharModal} showCloseButton>
+        <div className="p-6 space-y-5 w-full max-w-md">
+          <div>
+            <h2 className="text-xl font-bold text-foreground">
+              {editando ? 'Editar Aluno' : 'Adicionar Aluno'}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {editando
+                ? 'Atualize os dados do aluno abaixo.'
+                : 'Preencha os dados para cadastrar um novo aluno na turma.'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-sm font-medium text-foreground mb-1.5 block">
+                Nome completo <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Ex: João da Silva"
+                value={form.nome}
+                onChange={(e) => setForm(f => ({ ...f, nome: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">
+                Matrícula <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Ex: 2024001"
+                value={form.matricula}
+                onChange={(e) => setForm(f => ({ ...f, matricula: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Status</label>
+              <Select
+                value={form.status}
+                onValueChange={(v) => setForm(f => ({ ...f, status: v as 'ativo' | 'inativo' }))}
+              >
+                <option value="ativo">Ativo</option>
+                <option value="inativo">Inativo</option>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <label className="text-sm font-medium text-foreground mb-1.5 block">E-mail</label>
+              <Input
+                type="email"
+                placeholder="aluno@escola.com"
+                value={form.email}
+                onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Responsável</label>
+              <Input
+                placeholder="Nome do pai, mãe ou responsável"
+                value={form.responsavel}
+                onChange={(e) => setForm(f => ({ ...f, responsavel: e.target.value }))}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="text-sm font-medium text-foreground mb-1.5 block">Telefone</label>
+              <Input
+                placeholder="(00) 00000-0000"
+                value={form.telefone}
+                onChange={(e) => setForm(f => ({ ...f, telefone: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-1">
+            <Button variant="outline" onClick={fecharModal} disabled={salvando}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={salvar}
+              disabled={salvando}
+              icon={salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
+            >
+              {salvando ? 'Salvando...' : editando ? 'Salvar Alterações' : 'Adicionar Aluno'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Confirmação de Exclusão */}
+      <ConfirmModal
+        isOpen={Boolean(excluindoId)}
+        onClose={() => setExcluindoId(null)}
+        onConfirm={confirmarExclusao}
+        title="Remover Aluno"
+        description="Esta ação não pode ser desfeita. O aluno será removido permanentemente da turma."
+        confirmText="Remover"
+        variant="danger"
+      />
     </div>
   );
 }
+
+// ─── Aba de Linha do Tempo ────────────────────────────────────────────────────
 
 const TIPO_CONFIG: Record<Marco['tipo'], { cor: string; icon: React.ElementType }> = {
   Prova:    { cor: 'bg-primary',   icon: FileText   },
@@ -655,10 +655,10 @@ const FORM_VAZIO: MarcoFormState = { titulo: '', descricao: '', tipo: 'Evento', 
 function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
   const { marcos, carregarMarcos, adicionarMarco, atualizarMarco, excluirMarco } = useDados();
 
-  const [showModal, setShowModal]         = useState(false);
-  const [editando, setEditando]           = useState<Marco | null>(null);
-  const [form, setForm]                   = useState<MarcoFormState>(FORM_VAZIO);
-  const [excluindoId, setExcluindoId]     = useState<string | null>(null);
+  const [showModal, setShowModal]     = useState(false);
+  const [editando, setEditando]       = useState<Marco | null>(null);
+  const [form, setForm]               = useState<MarcoFormState>(FORM_VAZIO);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (turmaId) carregarMarcos(turmaId);
@@ -677,10 +677,10 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
   function abrirEditar(marco: Marco) {
     setEditando(marco);
     setForm({
-      titulo:   marco.titulo,
+      titulo:    marco.titulo,
       descricao: marco.descricao || '',
-      tipo:     marco.tipo,
-      data:     new Date(marco.data).toISOString().slice(0, 10),
+      tipo:      marco.tipo,
+      data:      new Date(marco.data).toISOString().slice(0, 10),
     });
     setShowModal(true);
   }
@@ -731,7 +731,6 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Eventos da Turma</h3>
@@ -742,7 +741,6 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
         </Button>
       </div>
 
-      {/* Lista vazia */}
       {marcosOrdenados.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center text-muted-foreground">
@@ -759,8 +757,8 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
       ) : (
         <div className="space-y-6">
           {marcosOrdenados.map((marco, index) => {
-            const config    = TIPO_CONFIG[marco.tipo] ?? TIPO_CONFIG.Evento;
-            const EventoIcon = config.icon;
+            const cfg       = TIPO_CONFIG[marco.tipo] ?? TIPO_CONFIG.Evento;
+            const EventoIcon = cfg.icon;
             const isPast    = new Date(marco.data) < new Date();
 
             return (
@@ -768,7 +766,7 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
                 {index !== marcosOrdenados.length - 1 && (
                   <div className="absolute left-[23px] top-12 bottom-0 w-0.5 bg-border" />
                 )}
-                <div className={`absolute left-0 top-2 w-12 h-12 ${config.cor} rounded-full flex items-center justify-center border-4 border-background shadow-lg`}>
+                <div className={`absolute left-0 top-2 w-12 h-12 ${cfg.cor} rounded-full flex items-center justify-center border-4 border-background shadow-lg`}>
                   <EventoIcon className="h-5 w-5 text-white" />
                 </div>
                 <Card className="hover:shadow-lg transition-all">
@@ -818,7 +816,6 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
         </div>
       )}
 
-      {/* Modal criar / editar */}
       <Modal isOpen={showModal} onClose={fecharModal} showCloseButton>
         <div className="p-6 space-y-4 max-w-md w-full">
           <h2 className="text-lg font-bold">{editando ? 'Editar Marco' : 'Novo Marco'}</h2>
@@ -871,7 +868,6 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
         </div>
       </Modal>
 
-      {/* Confirmação de exclusão */}
       <ConfirmModal
         isOpen={Boolean(excluindoId)}
         onClose={() => setExcluindoId(null)}
@@ -885,6 +881,8 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
   );
 }
 
+// ─── Abas placeholder ─────────────────────────────────────────────────────────
+
 function PlanosTab() {
   return (
     <Card>
@@ -895,7 +893,7 @@ function PlanosTab() {
             Nenhum plano de aula vinculado
           </h3>
           <p>
-            Comece criando um plano de aula para esta turma. 
+            Comece criando um plano de aula para esta turma.
             Use a IA para gerar sugestões alinhadas à BNCC.
           </p>
           <Button className="mt-4" icon={<Plus className="h-4 w-4" />}>

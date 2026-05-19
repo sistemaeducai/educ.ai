@@ -8,7 +8,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/database.types';
-import { salvarTokenGoogle } from '../app/services/googleService';
+import { salvarTokenGoogle, sincronizarParaSupabase } from '../app/services/googleService';
+import { toast as sonnerToast } from 'sonner';
 
 type Usuario = Database['public']['Tables']['usuarios']['Row'];
 type Professor = Database['public']['Tables']['professores']['Row'];
@@ -126,6 +127,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             session.provider_refresh_token ?? null,
             expiresAt
           ).catch(console.warn);
+
+          // Pull turmas e alunos do Google Classroom automaticamente no login
+          sincronizarParaSupabase(session.provider_token).then((result) => {
+            if (result.turmasSynced > 0) {
+              sonnerToast.success('Google Classroom sincronizado!', {
+                description: `${result.turmasSynced} turma${result.turmasSynced > 1 ? 's' : ''} e ${result.alunosSynced} aluno${result.alunosSynced !== 1 ? 's' : ''} importados.`,
+                duration: 6000,
+              });
+            } else {
+              sonnerToast.info('Nenhuma turma encontrada no Google Classroom', {
+                description: 'Deseja criar sua primeira turma?',
+                duration: 8000,
+                action: {
+                  label: 'Criar turma',
+                  onClick: () => { window.location.href = '/turmas'; },
+                },
+              });
+            }
+          }).catch(console.warn);
         }
       } else {
         setUsuario(null);

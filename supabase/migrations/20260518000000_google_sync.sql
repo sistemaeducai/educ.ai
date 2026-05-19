@@ -42,8 +42,16 @@ ALTER TABLE public.alunos
 CREATE INDEX IF NOT EXISTS idx_alunos_google_user_id ON public.alunos(google_user_id);
 
 -- Unique constraint required for upsert on (google_user_id, turma_id)
-ALTER TABLE public.alunos
-  ADD CONSTRAINT IF NOT EXISTS alunos_google_user_turma_key UNIQUE (google_user_id, turma_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'alunos_google_user_turma_key'
+  ) THEN
+    ALTER TABLE public.alunos
+      ADD CONSTRAINT alunos_google_user_turma_key UNIQUE (google_user_id, turma_id);
+  END IF;
+END $$;
 
 -- pg_cron: run sync every 30 minutes for professors with stored tokens
 -- To enable pg_cron, run in Supabase Dashboard → Extensions → enable pg_cron, then:

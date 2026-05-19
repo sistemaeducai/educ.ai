@@ -1,11 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router';
+import { TurmaAnalytics } from '../components/analytics/TurmaAnalytics';
 import {
   Users, Calendar, BookOpen, ListChecks, FileText,
   TrendingUp, UserCheck, UserX,
   Search, Plus, ArrowLeft, Loader2, Sparkles, ArrowUpDown,
-  Pencil, Trash2,
+  Pencil, Trash2, GripVertical,
 } from 'lucide-react';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -19,7 +22,8 @@ import { ModalAnaliseTurma } from '../components/turma/ModalAnaliseTurma';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDados } from '../../contexts/DadosContext';
-import type { Marco } from '../../types';
+import type { Database } from '../../lib/database.types';
+type Marco = Database['public']['Tables']['marcos']['Row'];
 import { analisarTurma, AnaliseTurmaResponse, sugerirIntervencoes, SugerirIntervencoesResponse } from '../services/openaiService';
 
 type Aba = 'alunos' | 'linha-do-tempo' | 'planos' | 'atividades' | 'boletim';
@@ -48,7 +52,7 @@ export default function TurmaPerfil() {
   const turma = {
     id: id || '',
     nome: turmaData?.nome ?? 'Turma',
-    codigo: turmaData?.codigo ?? '',
+    codigo: '',
     nAlunos: turmaData?.total_alunos ?? 0,
     disciplina: turmaData?.disciplina ?? '',
     ano: turmaData?.serie ?? '',
@@ -199,7 +203,7 @@ export default function TurmaPerfil() {
         {abaAtiva === 'linha-do-tempo' && <LinhaDoTempoTab turmaId={id || ''} />}
         {abaAtiva === 'planos' && <PlanosTab />}
         {abaAtiva === 'atividades' && <AtividadesTab />}
-        {abaAtiva === 'boletim' && <BoletimTab />}
+        {abaAtiva === 'boletim' && <BoletimTab turmaId={id || ''} />}
       </div>
 
       {/* Modal de Análise IA */}
@@ -374,7 +378,7 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
         </div>
         <Select
           value={filtroStatus}
-          onValueChange={(v) => setFiltroStatus(v as 'todos' | 'ativo' | 'inativo')}
+          onChange={(e) => setFiltroStatus(e.target.value as 'todos' | 'ativo' | 'inativo')}
         >
           <option value="todos">Todos os Status</option>
           <option value="ativo">Ativos</option>
@@ -571,7 +575,7 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
               <label className="text-sm font-medium text-foreground mb-1.5 block">Status</label>
               <Select
                 value={form.status}
-                onValueChange={(v) => setForm(f => ({ ...f, status: v as 'ativo' | 'inativo' }))}
+                onChange={(e) => setForm(f => ({ ...f, status: e.target.value as 'ativo' | 'inativo' }))}
               >
                 <option value="ativo">Ativo</option>
                 <option value="inativo">Inativo</option>
@@ -635,22 +639,128 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
 
 // ─── Aba de Linha do Tempo ────────────────────────────────────────────────────
 
-const TIPO_CONFIG: Record<Marco['tipo'], { cor: string; icon: React.ElementType }> = {
-  Prova:    { cor: 'bg-primary',   icon: FileText   },
-  Entrega:  { cor: 'bg-success',   icon: ListChecks },
-  Aviso:    { cor: 'bg-warning',   icon: Users      },
-  Simulado: { cor: 'bg-secondary', icon: BookOpen   },
-  Evento:   { cor: 'bg-info',      icon: Calendar   },
+const TIPO_CONFIG: Record<string, { cor: string; icon: React.ElementType; label: string }> = {
+  prova:    { cor: 'bg-primary',   icon: FileText,   label: 'Prova'    },
+  entrega:  { cor: 'bg-success',   icon: ListChecks, label: 'Entrega'  },
+  aviso:    { cor: 'bg-warning',   icon: Users,      label: 'Aviso'    },
+  simulado: { cor: 'bg-secondary', icon: BookOpen,   label: 'Simulado' },
+  evento:   { cor: 'bg-info',      icon: Calendar,   label: 'Evento'   },
 };
 
 interface MarcoFormState {
   titulo: string;
   descricao: string;
-  tipo: Marco['tipo'];
+  tipo: 'prova' | 'entrega' | 'aviso' | 'simulado' | 'evento';
   data: string;
 }
 
-const FORM_VAZIO: MarcoFormState = { titulo: '', descricao: '', tipo: 'Evento', data: '' };
+const FORM_VAZIO: MarcoFormState = { titulo: '', descricao: '', tipo: 'evento', data: '' };
+
+const MARCO_DRAG_TYPE = 'MARCO';
+
+interface MarcoCardProps {
+  marco: Marco;
+  index: number;
+  total: number;
+  onEditar: (marco: Marco) => void;
+  onExcluir: (id: string) => void;
+  onTrocarDatas: (idOrigem: string, idDestino: string) => void;
+}
+
+function MarcoCard({ marco, index, total, onEditar, onExcluir, onTrocarDatas }: MarcoCardProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  const [{ isDragging }, drag, dragPreview] = useDrag({
+    type: MARCO_DRAG_TYPE,
+    item: { id: marco.id },
+    canDrag: !marco.bloqueado,
+    collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+  });
+
+  const [{ isOver }, drop] = useDrop<{ id: string }, void, { isOver: boolean }>({
+    accept: MARCO_DRAG_TYPE,
+    canDrop: (item) => item.id !== marco.id,
+    drop: (item) => {
+      if (item.id !== marco.id) {
+        onTrocarDatas(item.id, marco.id);
+      }
+    },
+    collect: (monitor) => ({ isOver: monitor.isOver() && monitor.canDrop() }),
+  });
+
+  dragPreview(drop(ref));
+
+  const cfg      = TIPO_CONFIG[marco.tipo] ?? TIPO_CONFIG.evento;
+  const EventoIcon = cfg.icon;
+  const isPast   = new Date(marco.data) < new Date();
+
+  return (
+    <div
+      ref={ref}
+      className="relative pl-12"
+      style={{ opacity: isDragging ? 0.4 : 1, transition: 'opacity 0.2s' }}
+    >
+      {index !== total - 1 && (
+        <div className="absolute left-[23px] top-12 bottom-0 w-0.5 bg-border" />
+      )}
+      <div className={`absolute left-0 top-2 w-12 h-12 ${cfg.cor} rounded-full flex items-center justify-center border-4 border-background shadow-lg`}>
+        <EventoIcon className="h-5 w-5 text-white" />
+      </div>
+      <Card
+        className={`hover:shadow-lg transition-all ${isOver ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+      >
+        <CardContent className="p-5">
+          <div className="flex items-start justify-between gap-4">
+            {!marco.bloqueado && (
+              <div
+                ref={drag as unknown as React.Ref<HTMLDivElement>}
+                className="mt-1 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
+                title="Arraste para reordenar"
+              >
+                <GripVertical className="h-5 w-5" />
+              </div>
+            )}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="info">{cfg.label}</Badge>
+                <Badge variant={isPast ? 'success' : 'default'}>
+                  {isPast ? 'Concluído' : 'Agendado'}
+                </Badge>
+              </div>
+              <h4 className="font-semibold text-foreground text-lg mb-1">{marco.titulo}</h4>
+              {marco.descricao && (
+                <p className="text-sm text-muted-foreground mb-2">{marco.descricao}</p>
+              )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                {new Date(marco.data).toLocaleDateString('pt-BR', {
+                  day: '2-digit', month: 'long', year: 'numeric',
+                })}
+              </div>
+            </div>
+            {!marco.bloqueado && (
+              <div className="flex gap-1 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Pencil className="h-4 w-4" />}
+                  onClick={() => onEditar(marco)}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={() => onExcluir(marco.id)}
+                />
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
   const { marcos, carregarMarcos, adicionarMarco, atualizarMarco, excluirMarco } = useDados();
@@ -665,7 +775,7 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
   }, [turmaId]);
 
   const marcosOrdenados = [...marcos]
-    .filter((m) => m.turmaId === turmaId)
+    .filter((m) => m.turma_id === turmaId)
     .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
 
   function abrirCriar() {
@@ -680,7 +790,7 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
       titulo:    marco.titulo,
       descricao: marco.descricao || '',
       tipo:      marco.tipo,
-      data:      new Date(marco.data).toISOString().slice(0, 10),
+      data:      marco.data.slice(0, 10),
     });
     setShowModal(true);
   }
@@ -700,20 +810,19 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
         titulo:    form.titulo,
         descricao: form.descricao,
         tipo:      form.tipo,
-        data:      new Date(form.data),
+        data:      form.data,
       });
       toast.success('Marco atualizado!', 'As alterações foram salvas');
     } else {
       adicionarMarco({
-        id:                 crypto.randomUUID(),
-        turmaId,
-        titulo:             form.titulo,
-        descricao:          form.descricao,
-        tipo:               form.tipo,
-        data:               new Date(form.data),
-        bloqueado:          false,
-        vinculosAtividades: [],
-        dataCriacao:        new Date(),
+        id:                  crypto.randomUUID(),
+        turma_id:            turmaId,
+        titulo:              form.titulo,
+        descricao:           form.descricao,
+        tipo:                form.tipo,
+        data:                form.data,
+        bloqueado:           false,
+        vinculos_atividades: [],
       });
       toast.success('Marco adicionado!', 'O evento foi incluído na linha do tempo');
     }
@@ -729,155 +838,120 @@ function LinhaDoTempoTab({ turmaId }: { turmaId: string }) {
     toast.success('Marco removido', 'O evento foi excluído da linha do tempo');
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-semibold">Eventos da Turma</h3>
-          <p className="text-sm text-muted-foreground">Histórico de atividades e marcos importantes</p>
-        </div>
-        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={abrirCriar}>
-          Adicionar Marco
-        </Button>
-      </div>
+  function trocarDatas(idOrigem: string, idDestino: string) {
+    const origem  = marcos.find((m) => m.id === idOrigem);
+    const destino = marcos.find((m) => m.id === idDestino);
+    if (!origem || !destino) return;
+    atualizarMarco(idOrigem,  { data: destino.data });
+    atualizarMarco(idDestino, { data: origem.data  });
+    toast.success('Marcos reordenados', 'As datas foram trocadas com sucesso');
+  }
 
-      {marcosOrdenados.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center text-muted-foreground">
-            <div className="max-w-md mx-auto space-y-4">
-              <Calendar className="h-16 w-16 mx-auto opacity-50" />
-              <h3 className="text-lg font-semibold text-foreground">Nenhum evento registrado</h3>
-              <p>Adicione marcos importantes como provas, entregas e eventos da turma.</p>
-              <Button onClick={abrirCriar} icon={<Plus className="h-4 w-4" />}>
-                Adicionar Primeiro Marco
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-semibold">Eventos da Turma</h3>
+            <p className="text-sm text-muted-foreground">Histórico de atividades e marcos importantes</p>
+          </div>
+          <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={abrirCriar}>
+            Adicionar Marco
+          </Button>
+        </div>
+
+        {marcosOrdenados.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center text-muted-foreground">
+              <div className="max-w-md mx-auto space-y-4">
+                <Calendar className="h-16 w-16 mx-auto opacity-50" />
+                <h3 className="text-lg font-semibold text-foreground">Nenhum evento registrado</h3>
+                <p>Adicione marcos importantes como provas, entregas e eventos da turma.</p>
+                <Button onClick={abrirCriar} icon={<Plus className="h-4 w-4" />}>
+                  Adicionar Primeiro Marco
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {marcosOrdenados.map((marco, index) => (
+              <MarcoCard
+                key={marco.id}
+                marco={marco}
+                index={index}
+                total={marcosOrdenados.length}
+                onEditar={abrirEditar}
+                onExcluir={confirmarExclusao}
+                onTrocarDatas={trocarDatas}
+              />
+            ))}
+          </div>
+        )}
+
+        <Modal isOpen={showModal} onClose={fecharModal} showCloseButton>
+          <div className="p-6 space-y-4 max-w-md w-full">
+            <h2 className="text-lg font-bold">{editando ? 'Editar Marco' : 'Novo Marco'}</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">Título *</label>
+                <Input
+                  placeholder="Ex: Prova Bimestral, Entrega de Trabalho..."
+                  value={form.titulo}
+                  onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">Tipo *</label>
+                <Select
+                  value={form.tipo}
+                  onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as MarcoFormState['tipo'] }))}
+                >
+                  <option value="prova">Prova</option>
+                  <option value="entrega">Entrega</option>
+                  <option value="aviso">Aviso</option>
+                  <option value="simulado">Simulado</option>
+                  <option value="evento">Evento</option>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">Data *</label>
+                <Input
+                  type="date"
+                  value={form.data}
+                  onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">Descrição</label>
+                <Textarea
+                  placeholder="Detalhes sobre o evento..."
+                  value={form.descricao}
+                  onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button onClick={salvar}>
+                {editando ? 'Salvar Alterações' : 'Adicionar Marco'}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {marcosOrdenados.map((marco, index) => {
-            const cfg       = TIPO_CONFIG[marco.tipo] ?? TIPO_CONFIG.Evento;
-            const EventoIcon = cfg.icon;
-            const isPast    = new Date(marco.data) < new Date();
-
-            return (
-              <div key={marco.id} className="relative pl-12">
-                {index !== marcosOrdenados.length - 1 && (
-                  <div className="absolute left-[23px] top-12 bottom-0 w-0.5 bg-border" />
-                )}
-                <div className={`absolute left-0 top-2 w-12 h-12 ${cfg.cor} rounded-full flex items-center justify-center border-4 border-background shadow-lg`}>
-                  <EventoIcon className="h-5 w-5 text-white" />
-                </div>
-                <Card className="hover:shadow-lg transition-all">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant="info">{marco.tipo}</Badge>
-                          <Badge variant={isPast ? 'success' : 'default'}>
-                            {isPast ? 'Concluído' : 'Agendado'}
-                          </Badge>
-                        </div>
-                        <h4 className="font-semibold text-foreground text-lg mb-1">{marco.titulo}</h4>
-                        {marco.descricao && (
-                          <p className="text-sm text-muted-foreground mb-2">{marco.descricao}</p>
-                        )}
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          {new Date(marco.data).toLocaleDateString('pt-BR', {
-                            day: '2-digit', month: 'long', year: 'numeric',
-                          })}
-                        </div>
-                      </div>
-                      {!marco.bloqueado && (
-                        <div className="flex gap-1 shrink-0">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon={<Pencil className="h-4 w-4" />}
-                            onClick={() => abrirEditar(marco)}
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            icon={<Trash2 className="h-4 w-4" />}
-                            onClick={() => confirmarExclusao(marco.id)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <Modal isOpen={showModal} onClose={fecharModal} showCloseButton>
-        <div className="p-6 space-y-4 max-w-md w-full">
-          <h2 className="text-lg font-bold">{editando ? 'Editar Marco' : 'Novo Marco'}</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Título *</label>
-              <Input
-                placeholder="Ex: Prova Bimestral, Entrega de Trabalho..."
-                value={form.titulo}
-                onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Tipo *</label>
-              <Select
-                value={form.tipo}
-                onValueChange={(v) => setForm((f) => ({ ...f, tipo: v as Marco['tipo'] }))}
-              >
-                <option value="Prova">Prova</option>
-                <option value="Entrega">Entrega</option>
-                <option value="Aviso">Aviso</option>
-                <option value="Simulado">Simulado</option>
-                <option value="Evento">Evento</option>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Data *</label>
-              <Input
-                type="date"
-                value={form.data}
-                onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Descrição</label>
-              <Textarea
-                placeholder="Detalhes sobre o evento..."
-                value={form.descricao}
-                onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
-                rows={2}
-              />
-            </div>
           </div>
-          <div className="flex gap-2 justify-end pt-2">
-            <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
-            <Button onClick={salvar}>
-              {editando ? 'Salvar Alterações' : 'Adicionar Marco'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
 
-      <ConfirmModal
-        isOpen={Boolean(excluindoId)}
-        onClose={() => setExcluindoId(null)}
-        onConfirm={executarExclusao}
-        title="Excluir Marco"
-        description="Esta ação não pode ser desfeita. O marco será removido permanentemente da linha do tempo."
-        confirmText="Excluir"
-        variant="danger"
-      />
-    </div>
+        <ConfirmModal
+          isOpen={Boolean(excluindoId)}
+          onClose={() => setExcluindoId(null)}
+          onConfirm={executarExclusao}
+          title="Excluir Marco"
+          description="Esta ação não pode ser desfeita. O marco será removido permanentemente da linha do tempo."
+          confirmText="Excluir"
+          variant="danger"
+        />
+      </div>
+    </DndProvider>
   );
 }
 
@@ -927,24 +1001,6 @@ function AtividadesTab() {
   );
 }
 
-function BoletimTab() {
-  return (
-    <Card>
-      <CardContent className="p-12 text-center text-muted-foreground">
-        <div className="max-w-md mx-auto space-y-4">
-          <FileText className="h-16 w-16 mx-auto opacity-50" />
-          <h3 className="text-lg font-semibold text-foreground">
-            Boletins não disponíveis
-          </h3>
-          <p>
-            Os boletins serão gerados automaticamente após as avaliações.
-            Você poderá visualizar e exportar para PDF.
-          </p>
-          <Button className="mt-4" variant="outline" icon={<FileText className="h-4 w-4" />}>
-            Visualizar Relatórios
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+function BoletimTab({ turmaId }: { turmaId: string }) {
+  return <TurmaAnalytics turmaId={turmaId} />;
 }

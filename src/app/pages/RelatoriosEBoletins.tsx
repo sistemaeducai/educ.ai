@@ -6,10 +6,10 @@ import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { Textarea } from '../components/ui/Textarea';
-import { 
-  FileText, 
-  Download, 
-  Mail, 
+import {
+  FileText,
+  Download,
+  Mail,
   AlertCircle,
   Send,
   Eye,
@@ -23,6 +23,7 @@ import { toast } from '../components/ui/Toast';
 import { analisarDesempenho, gerarComentarioBoletim } from '../services/openaiService';
 import { useConfig } from '../../contexts/ConfigContext';
 import { supabase } from '../../lib/supabase';
+import { BoletimPrint } from '../components/relatorios/BoletimPrint';
 
 interface Boletim {
   id: string;
@@ -53,6 +54,8 @@ export default function RelatoriosEBoletins() {
   const [analiseTexto, setAnaliseTexto] = useState('');
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [boletimSelecionado, setBoletimSelecionado] = useState<Boletim | null>(null);
+  const [modalPrint, setModalPrint] = useState(false);
+  const [boletimParaImprimir, setBoletimParaImprimir] = useState<Boletim | null>(null);
 
   const [boletins, setBoletins] = useState<Boletim[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,11 +67,14 @@ export default function RelatoriosEBoletins() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data: dbTurmas, error: turmasErr } = await supabase
+        const supa = supabase as any;
+
+        const { data: rawTurmas, error: turmasErr } = await supa
           .from('turmas')
           .select('id, nome')
           .eq('professor_id', user.id);
 
+        const dbTurmas = rawTurmas as Array<{ id: string; nome: string }> | null;
         if (turmasErr || !dbTurmas) throw turmasErr || new Error('Nenhuma turma encontrada');
 
         const turmaIds = dbTurmas.map(t => t.id);
@@ -77,20 +83,23 @@ export default function RelatoriosEBoletins() {
           return;
         }
 
-        const { data: dbAlunos } = await supabase
+        const { data: rawAlunos } = await supa
           .from('alunos')
           .select('id, nome, turma_id')
           .in('turma_id', turmaIds);
+        const dbAlunos = rawAlunos as Array<{ id: string; nome: string; turma_id: string }> | null;
 
-        const { data: dbAtividades } = await supabase
+        const { data: rawAtividades } = await supa
           .from('atividades')
           .select('id, nome, turma_id')
           .in('turma_id', turmaIds);
+        const dbAtividades = rawAtividades as Array<{ id: string; nome: string; turma_id: string }> | null;
 
-        const { data: dbCorrecoes } = await supabase
+        const { data: rawCorrecoes } = await supa
           .from('correcoes')
           .select('aluno_id, nota, status, atividade_id')
           .eq('professor_id', user.id);
+        const dbCorrecoes = rawCorrecoes as Array<{ aluno_id: string; nota: number | null; status: string; atividade_id: string }> | null;
 
         const listBoletins: Boletim[] = [];
 
@@ -188,27 +197,16 @@ export default function RelatoriosEBoletins() {
 
   const handleEnviarEmLote = () => {
     const pendentes = boletinsFiltrados.filter(b => b.statusEnvio === 'Pendente');
-    toast({
-      title: `${pendentes.length} boletins enviados!`,
-      description: 'Os boletins foram enviados por email',
-      variant: 'success',
-    });
+    toast.success(`${pendentes.length} boletins enviados!`, 'Os boletins foram enviados por email');
   };
 
-  const handleGerarPDF = (boletimId: string) => {
-    toast({
-      title: 'PDF gerado!',
-      description: 'O boletim foi exportado com sucesso',
-      variant: 'success',
-    });
+  const handleGerarPDF = (boletim: Boletim) => {
+    setBoletimParaImprimir(boletim);
+    setModalPrint(true);
   };
 
   const handleEnviarIndividual = (boletimId: string) => {
-    toast({
-      title: 'Boletim enviado!',
-      description: 'O email foi enviado ao responsável',
-      variant: 'success',
-    });
+    toast.success('Boletim enviado!', 'O email foi enviado ao responsável');
   };
 
   const handleAnalisarDesempenho = async (boletim: Boletim) => {
@@ -335,21 +333,21 @@ export default function RelatoriosEBoletins() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <Select value={filtroPeriodo} onValueChange={setFiltroPeriodo}>
+          <Select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}>
             <option value="todos">Todos os Períodos</option>
             {periodos.map(p => (
               <option key={p} value={p}>{p}</option>
             ))}
           </Select>
 
-          <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+          <Select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
             <option value="todos">Todos os Status</option>
             <option value="Enviado">Enviado</option>
             <option value="Pendente">Pendente</option>
             <option value="Erro">Erro</option>
           </Select>
 
-          <Select value={filtroTurma} onValueChange={setFiltroTurma}>
+          <Select value={filtroTurma} onChange={e => setFiltroTurma(e.target.value)}>
             <option value="todos">Todas as Turmas</option>
             {turmas.map(t => (
               <option key={t} value={t}>{t}</option>
@@ -468,7 +466,7 @@ export default function RelatoriosEBoletins() {
                           <Eye className="h-4 w-4 text-foreground" />
                         </button>
                         <button
-                          onClick={() => handleGerarPDF(boletim.id)}
+                          onClick={() => handleGerarPDF(boletim)}
                           className="p-2 hover:bg-muted rounded-lg transition-colors"
                           title="Gerar PDF"
                         >
@@ -639,6 +637,21 @@ export default function RelatoriosEBoletins() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal de Impressão / PDF */}
+      <Modal
+        isOpen={modalPrint}
+        onClose={() => { setModalPrint(false); setBoletimParaImprimir(null); }}
+        title={boletimParaImprimir ? `Boletim — ${boletimParaImprimir.aluno}` : 'Boletim'}
+        size="lg"
+      >
+        {boletimParaImprimir && (
+          <BoletimPrint
+            boletim={boletimParaImprimir}
+            onClose={() => { setModalPrint(false); setBoletimParaImprimir(null); }}
+          />
+        )}
       </Modal>
     </div>
   );

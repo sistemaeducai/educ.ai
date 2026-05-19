@@ -4,14 +4,17 @@ import { ToastProvider } from './components/ui/Toast';
 import { AuthProvider } from '../contexts/AuthContext';
 import { DadosProvider } from '../contexts/DadosContext';
 import { ConfigProvider } from '../contexts/ConfigContext';
+import { NotificacoesProvider } from '../contexts/NotificacoesContext';
 
 export default function App() {
   return (
     <AuthProvider>
       <ConfigProvider>
         <DadosProvider>
-          <RouterProvider router={router} />
-          <ToastProvider />
+          <NotificacoesProvider>
+            <RouterProvider router={router} />
+            <ToastProvider />
+          </NotificacoesProvider>
         </DadosProvider>
       </ConfigProvider>
     </AuthProvider>

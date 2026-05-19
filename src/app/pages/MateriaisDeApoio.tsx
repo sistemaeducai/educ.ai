@@ -7,13 +7,13 @@ import { Badge } from '../components/ui/Badge';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Modal } from '../components/ui/Modal';
 import { Textarea } from '../components/ui/Textarea';
-import { 
-  Upload, 
-  FileText, 
-  Image as ImageIcon, 
-  Video, 
-  Link as LinkIcon, 
-  Trash2, 
+import {
+  Upload,
+  FileText,
+  Image as ImageIcon,
+  Video,
+  Link as LinkIcon,
+  Trash2,
   Edit,
   Download,
   Share2,
@@ -30,14 +30,17 @@ import {
   Sparkles,
   Loader2,
   AlertCircle,
-  X
+  X,
+  Clock
 } from 'lucide-react';
+import { MaterialVersions } from '../components/materiais/MaterialVersions';
 import { toast } from '../components/ui/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { gerarResumo, gerarListaExercicios } from '../services/openaiService';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDados } from '../../contexts/DadosContext';
+import { RichTextEditor } from '../components/ui/RichTextEditor';
 
 interface Material {
   id: string;
@@ -83,10 +86,19 @@ export default function MateriaisDeApoio() {
   const [erroResumo, setErroResumo] = useState('');
   const [erroExercicios, setErroExercicios] = useState('');
 
+  // Modal Histórico de Versões
+  const [showVersionsModal, setShowVersionsModal] = useState(false);
+  const [materialParaVersoes, setMaterialParaVersoes] = useState<Material | null>(null);
+
+  // Modal Nova Anotação (editor rico)
+  const [showNotaModal, setShowNotaModal] = useState(false);
+  const [salvandoNota, setSalvandoNota] = useState(false);
+  const [notaForm, setNotaForm] = useState({ titulo: '', conteudo: '', turmaId: '', tags: '' });
+
   // IA and Supabase Contexts
   const { config } = useConfig();
   const { usuario } = useAuth();
-  const { turmas: dbTurmas, materiais: dbMateriais, excluirMaterial } = useDados();
+  const { turmas: dbTurmas, materiais: dbMateriais, excluirMaterial, adicionarMaterial } = useDados();
 
   const materiais = useMemo<Material[]>(() => {
     return dbMateriais.map(m => {
@@ -264,6 +276,39 @@ export default function MateriaisDeApoio() {
     setShowPastaModal(false);
   };
 
+  const handleSalvarNota = async () => {
+    if (!notaForm.titulo.trim()) {
+      toast.error('Título obrigatório', 'Insira um título para a anotação');
+      return;
+    }
+    if (!notaForm.conteudo.trim() || notaForm.conteudo === '<br>') {
+      toast.error('Conteúdo obrigatório', 'Escreva algo no editor antes de salvar');
+      return;
+    }
+    try {
+      setSalvandoNota(true);
+      const tags = notaForm.tags.split(',').map(t => t.trim()).filter(Boolean);
+      await adicionarMaterial({
+        professor_id: usuario?.id ?? '',
+        turma_id: notaForm.turmaId || null,
+        titulo: notaForm.titulo.trim(),
+        descricao: notaForm.conteudo,
+        tipo: 'documento',
+        arquivo_url: null,
+        link_externo: null,
+        categoria: 'Anotação',
+        tags,
+      });
+      toast.success('Anotação salva!', 'O material foi criado com sucesso');
+      setNotaForm({ titulo: '', conteudo: '', turmaId: '', tags: '' });
+      setShowNotaModal(false);
+    } catch (err: any) {
+      toast.error('Erro ao salvar', err.message || 'Tente novamente');
+    } finally {
+      setSalvandoNota(false);
+    }
+  };
+
   const handleGerarResumo = async (material: Material) => {
     if (!material.preview) {
       toast.error('Resumo não disponível', 'Este material não tem um preview disponível para gerar um resumo');
@@ -272,8 +317,8 @@ export default function MateriaisDeApoio() {
     setCarregandoResumo(true);
     setErroResumo('');
     try {
-      const resumo = await gerarResumo(material.preview);
-      setResumoTexto(resumo);
+      const result = await gerarResumo(material.preview as any);
+      setResumoTexto(result.resumo);
       setResumoModal(true);
     } catch (error: any) {
       setErroResumo(error.message || 'Ocorreu um erro ao gerar o resumo');
@@ -290,8 +335,8 @@ export default function MateriaisDeApoio() {
     setCarregandoExercicios(true);
     setErroExercicios('');
     try {
-      const exercicios = await gerarListaExercicios(material.preview);
-      setExerciciosTexto(exercicios);
+      const result = await gerarListaExercicios(material.preview as any);
+      setExerciciosTexto(result.exercicios.map(e => e.enunciado).join('\n\n'));
       setExerciciosModal(true);
     } catch (error: any) {
       setErroExercicios(error.message || 'Ocorreu um erro ao gerar os exercícios');
@@ -312,14 +357,14 @@ export default function MateriaisDeApoio() {
         </div>
         <div className="flex gap-2">
           <Button 
-            variant={viewMode === 'list' ? 'default' : 'outline'}
+            variant={viewMode === 'list' ? 'primary' : 'outline'}
             size="sm"
             onClick={() => setViewMode('list')}
             icon={<List className="h-4 w-4" />}
           >
           </Button>
-          <Button 
-            variant={viewMode === 'grid' ? 'default' : 'outline'}
+          <Button
+            variant={viewMode === 'grid' ? 'primary' : 'outline'}
             size="sm"
             onClick={() => setViewMode('grid')}
             icon={<Grid3x3 className="h-4 w-4" />}
@@ -423,9 +468,18 @@ export default function MateriaisDeApoio() {
         <p className="text-sm text-muted-foreground mb-4">
           ou clique no botão abaixo para selecionar
         </p>
-        <Button icon={<Upload className="h-4 w-4" />}>
-          Selecionar Arquivos
-        </Button>
+        <div className="flex gap-2 justify-center">
+          <Button icon={<Upload className="h-4 w-4" />}>
+            Selecionar Arquivos
+          </Button>
+          <Button
+            variant="outline"
+            icon={<Edit className="h-4 w-4" />}
+            onClick={() => setShowNotaModal(true)}
+          >
+            Criar Anotação
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -443,7 +497,7 @@ export default function MateriaisDeApoio() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <Select value={filtroTipo} onValueChange={setFiltroTipo}>
+          <Select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
             <option value="todos">Todos os Tipos</option>
             <option value="PDF">PDF</option>
             <option value="DOC">DOC</option>
@@ -452,7 +506,7 @@ export default function MateriaisDeApoio() {
             <option value="Link">Link</option>
           </Select>
 
-          <Select value={filtroDisciplina} onValueChange={setFiltroDisciplina}>
+          <Select value={filtroDisciplina} onChange={e => setFiltroDisciplina(e.target.value)}>
             <option value="todos">Todas as Disciplinas</option>
             {disciplinas.map(d => (
               <option key={d} value={d}>{d}</option>
@@ -633,6 +687,13 @@ export default function MateriaisDeApoio() {
                           >
                             <CheckSquare className="h-4 w-4 text-success mx-auto" />
                           </button>
+                          <button
+                            onClick={() => { setMaterialParaVersoes(material); setShowVersionsModal(true); }}
+                            className="flex-1 p-2 hover:bg-muted rounded-lg transition-colors"
+                            title="Histórico de Versões"
+                          >
+                            <Clock className="h-4 w-4 text-primary mx-auto" />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -718,9 +779,9 @@ export default function MateriaisDeApoio() {
                           <button className="p-2 hover:bg-muted rounded-lg transition-colors" title="Compartilhar">
                             <Share2 className="h-4 w-4 text-foreground" />
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleDeletar(material.id)}
-                            className="p-2 hover:bg-muted rounded-lg transition-colors" 
+                            className="p-2 hover:bg-muted rounded-lg transition-colors"
                             title="Excluir"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
@@ -738,6 +799,13 @@ export default function MateriaisDeApoio() {
                             title="Gerar Exercícios"
                           >
                             <CheckSquare className="h-4 w-4 text-success" />
+                          </button>
+                          <button
+                            onClick={() => { setMaterialParaVersoes(material); setShowVersionsModal(true); }}
+                            className="p-2 hover:bg-muted rounded-lg transition-colors"
+                            title="Histórico de Versões"
+                          >
+                            <Clock className="h-4 w-4 text-primary" />
                           </button>
                         </div>
                       </td>
@@ -765,6 +833,78 @@ export default function MateriaisDeApoio() {
         </Card>
       )}
 
+      {/* Modal Nova Anotação */}
+      <Modal
+        isOpen={showNotaModal}
+        onClose={() => setShowNotaModal(false)}
+        title="Criar Nova Anotação"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-foreground mb-1.5 block">
+              Título <span className="text-destructive">*</span>
+            </label>
+            <Input
+              placeholder="Ex: Resumo de Frações, Guia de Conjugação Verbal..."
+              value={notaForm.titulo}
+              onChange={e => setNotaForm(f => ({ ...f, titulo: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-foreground mb-1.5 block">
+              Turma (opcional)
+            </label>
+            <Select
+              value={notaForm.turmaId}
+              onChange={e => setNotaForm(f => ({ ...f, turmaId: e.target.value }))}
+            >
+              <option value="">Sem turma específica</option>
+              {dbTurmas.map(t => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
+              ))}
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-foreground mb-1.5 block">
+              Conteúdo <span className="text-destructive">*</span>
+            </label>
+            <RichTextEditor
+              value={notaForm.conteudo}
+              onChange={html => setNotaForm(f => ({ ...f, conteudo: html }))}
+              placeholder="Escreva o conteúdo da anotação aqui. Use a barra de ferramentas para formatar o texto..."
+              minHeight={240}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-foreground mb-1.5 block">
+              Tags (separadas por vírgula)
+            </label>
+            <Input
+              placeholder="Ex: matemática, frações, 5º ano"
+              value={notaForm.tags}
+              onChange={e => setNotaForm(f => ({ ...f, tags: e.target.value }))}
+            />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setShowNotaModal(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSalvarNota}
+              disabled={salvandoNota}
+              icon={salvandoNota ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
+            >
+              {salvandoNota ? 'Salvando...' : 'Salvar Anotação'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Delete Modal */}
       <ConfirmModal
         isOpen={showDeleteModal}
@@ -782,16 +922,19 @@ export default function MateriaisDeApoio() {
         onClose={() => setShowPastaModal(false)}
         title="Criar Nova Pasta"
         description="Insira o nome da nova pasta e clique em 'Criar'."
-        confirmText="Criar"
-        onConfirm={handleCriarPasta}
-        variant="default"
       >
-        <Input
-          placeholder="Nome da pasta"
-          value={nomeNovaPasta}
-          onChange={(e) => setNomeNovaPasta(e.target.value)}
-          className="w-full"
-        />
+        <div className="space-y-3">
+          <Input
+            placeholder="Nome da pasta"
+            value={nomeNovaPasta}
+            onChange={(e) => setNomeNovaPasta(e.target.value)}
+            className="w-full"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowPastaModal(false)}>Cancelar</Button>
+            <Button onClick={handleCriarPasta}>Criar</Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Resumo Modal */}
@@ -800,9 +943,6 @@ export default function MateriaisDeApoio() {
         onClose={() => setResumoModal(false)}
         title="Resumo do Material"
         description="Aqui está o resumo gerado para o material selecionado."
-        confirmText="Fechar"
-        onConfirm={() => setResumoModal(false)}
-        variant="default"
       >
         {carregandoResumo ? (
           <div className="flex items-center justify-center">
@@ -834,9 +974,6 @@ export default function MateriaisDeApoio() {
         onClose={() => setExerciciosModal(false)}
         title="Lista de Exercícios"
         description="Aqui está a lista de exercícios gerada para o material selecionado."
-        confirmText="Fechar"
-        onConfirm={() => setExerciciosModal(false)}
-        variant="default"
       >
         {carregandoExercicios ? (
           <div className="flex items-center justify-center">
@@ -859,6 +996,23 @@ export default function MateriaisDeApoio() {
               />
             )}
           </>
+        )}
+      </Modal>
+
+      {/* Modal Histórico de Versões */}
+      <Modal
+        isOpen={showVersionsModal}
+        onClose={() => { setShowVersionsModal(false); setMaterialParaVersoes(null); }}
+        title={materialParaVersoes ? `Histórico: ${materialParaVersoes.nome}` : 'Histórico de Versões'}
+        description="Versões anteriores do material. Clique em 'Restaurar esta versão' para reverter o conteúdo."
+        size="lg"
+      >
+        {materialParaVersoes && (
+          <MaterialVersions
+            materialId={materialParaVersoes.id}
+            materialNome={materialParaVersoes.nome}
+            onRestaurar={() => setShowVersionsModal(false)}
+          />
         )}
       </Modal>
     </div>

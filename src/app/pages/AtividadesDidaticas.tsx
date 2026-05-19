@@ -5,12 +5,12 @@ import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
-import { 
-  Plus, 
-  Eye, 
-  Edit, 
-  Trash2, 
-  Calendar as CalendarIcon, 
+import {
+  Plus,
+  Eye,
+  Edit,
+  Trash2,
+  Calendar as CalendarIcon,
   LayoutGrid,
   Search,
   Copy,
@@ -27,8 +27,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
+import {
+  criarFormulario,
+  buscarRespostas,
+  googleFormsDisponivel,
+  type QuestaoForms,
+  type FormularioCriado,
+} from '../../services/googleFormsService';
 import { toast } from '../components/ui/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { 
@@ -71,6 +79,16 @@ export default function AtividadesDidaticas() {
   const { config } = useConfig();
   const { usuario } = useAuth();
   const { turmas: dbTurmas, atividades: dbAtividades, excluirAtividade } = useDados();
+
+  // Google Forms States
+  const [showFormsModal, setShowFormsModal] = useState(false);
+  const [atividadeParaForms, setAtividadeParaForms] = useState<Atividade | null>(null);
+  const [criandoForm, setCriandoForm] = useState(false);
+  const [formCriado, setFormCriado] = useState<FormularioCriado | null>(null);
+  const [showRespostasModal, setShowRespostasModal] = useState(false);
+  const [formIdRespostas, setFormIdRespostas] = useState<string>('');
+  const [totalRespostas, setTotalRespostas] = useState<number | null>(null);
+  const [carregandoRespostas, setCarregandoRespostas] = useState(false);
 
   const openaiConfigured = Boolean(config.openai_api_key);
   const [showModalIA, setShowModalIA] = useState(false);
@@ -159,6 +177,73 @@ export default function AtividadesDidaticas() {
     }
   };
   
+  // Handler para exportar atividade para Google Forms
+  const handleAbrirFormsModal = (atividade: Atividade) => {
+    setAtividadeParaForms(atividade);
+    setFormCriado(null);
+    setShowFormsModal(true);
+  };
+
+  const handleCriarForms = async () => {
+    if (!atividadeParaForms) return;
+    const accessToken = config.google_access_token as string | undefined;
+    if (!accessToken) return;
+
+    setCriandoForm(true);
+    try {
+      // Monta questões de exemplo baseadas no tipo da atividade
+      const questoes: QuestaoForms[] = [];
+      if (atividadeParaForms.tipo === 'Objetiva' || atividadeParaForms.tipo === 'Mista') {
+        questoes.push({
+          enunciado: `Questão 1 - ${atividadeParaForms.nome}`,
+          tipo: 'multipla_escolha',
+          alternativas: ['Alternativa A', 'Alternativa B', 'Alternativa C', 'Alternativa D'],
+        });
+      }
+      if (atividadeParaForms.tipo === 'Discursiva' || atividadeParaForms.tipo === 'Mista') {
+        questoes.push({
+          enunciado: `Questão dissertativa - ${atividadeParaForms.nome}`,
+          tipo: 'texto',
+        });
+      }
+      if (questoes.length === 0) {
+        questoes.push({ enunciado: `Questão 1 - ${atividadeParaForms.nome}`, tipo: 'texto' });
+      }
+
+      const resultado = await criarFormulario(
+        atividadeParaForms.nome,
+        `Atividade de ${atividadeParaForms.disciplina} — ${atividadeParaForms.turma}`,
+        questoes,
+        accessToken
+      );
+      setFormCriado(resultado);
+    } catch (err: any) {
+      const { toast } = await import('../components/ui/Toast');
+      toast.error('Erro ao criar formulário', err.message || 'Tente novamente');
+    } finally {
+      setCriandoForm(false);
+    }
+  };
+
+  const handleVerRespostas = async (formId: string) => {
+    const accessToken = config.google_access_token as string | undefined;
+    if (!accessToken) return;
+    setFormIdRespostas(formId);
+    setTotalRespostas(null);
+    setCarregandoRespostas(true);
+    setShowRespostasModal(true);
+    try {
+      const { total } = await buscarRespostas(formId, accessToken);
+      setTotalRespostas(total);
+    } catch (err: any) {
+      const { toast } = await import('../components/ui/Toast');
+      toast.error('Erro ao buscar respostas', err.message || 'Tente novamente');
+      setShowRespostasModal(false);
+    } finally {
+      setCarregandoRespostas(false);
+    }
+  };
+
   // Handler para gerar questões com IA
   const handleGerarComIA = async () => {
     if (!formIA.disciplina || !formIA.anoEscolar || !formIA.tema) {
@@ -546,6 +631,13 @@ export default function AtividadesDidaticas() {
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </button>
+                        <button
+                          onClick={() => handleAbrirFormsModal(atividade)}
+                          className="p-2 hover:bg-muted rounded-lg transition-colors"
+                          title="Exportar para Google Forms"
+                        >
+                          <ExternalLink className="h-4 w-4 text-blue-500" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -800,6 +892,160 @@ export default function AtividadesDidaticas() {
         </Card>
       )}
       
+      {/* Modal Google Forms — Exportar */}
+      <Modal
+        isOpen={showFormsModal}
+        onClose={() => { setShowFormsModal(false); setAtividadeParaForms(null); setFormCriado(null); }}
+        title="Exportar para Google Forms"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {!googleFormsDisponivel(config) ? (
+            <div className="flex items-start gap-3 p-4 bg-warning/5 border border-warning/20 rounded-lg">
+              <AlertCircle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-foreground text-sm mb-1">Google não conectado</h4>
+                <p className="text-xs text-muted-foreground">
+                  Para exportar atividades para o Google Forms, você precisa conectar sua conta Google nas
+                  configurações do sistema. Certifique-se de conceder as permissões{' '}
+                  <strong>forms.body</strong> e <strong>forms.responses.readonly</strong>.
+                </p>
+              </div>
+            </div>
+          ) : formCriado ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 bg-success/5 border border-success/20 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-foreground text-sm mb-1">Formulário criado com sucesso!</h4>
+                  <p className="text-xs text-muted-foreground">Compartilhe o link abaixo com seus alunos.</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Link para alunos responderem</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={formCriado.responderUrl}
+                    className="flex-1 text-xs bg-muted rounded-lg px-3 py-2 border border-border font-mono"
+                  />
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(formCriado!.responderUrl); }}
+                    className="p-2 hover:bg-muted rounded-lg transition-colors text-xs border border-border"
+                    title="Copiar link"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <a
+                  href={formCriado.responderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir formulário
+                </a>
+                <a
+                  href={formCriado.editUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-2 px-4 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  <Edit className="h-4 w-4" />
+                  Editar no Google
+                </a>
+              </div>
+
+              <button
+                onClick={() => handleVerRespostas(formCriado.formId)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-4 border border-border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+              >
+                <Users className="h-4 w-4" />
+                Ver Respostas
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {atividadeParaForms && (
+                <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                  <h4 className="font-semibold text-foreground text-sm">Preview da exportação</h4>
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Atividade:</strong> {atividadeParaForms.nome}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Turma:</strong> {atividadeParaForms.turma}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Tipo:</strong> {atividadeParaForms.tipo}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2 italic">
+                    As questões serão criadas com base no tipo da atividade. Você poderá editá-las diretamente no Google Forms após a exportação.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  className="flex-1"
+                  onClick={handleCriarForms}
+                  disabled={criandoForm}
+                  icon={criandoForm ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                >
+                  {criandoForm ? 'Criando formulário...' : 'Exportar para Google Forms'}
+                </Button>
+                <Button variant="outline" onClick={() => setShowFormsModal(false)} disabled={criandoForm}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal Google Forms — Ver Respostas */}
+      <Modal
+        isOpen={showRespostasModal}
+        onClose={() => setShowRespostasModal(false)}
+        title="Respostas do Formulário"
+        size="md"
+      >
+        <div className="space-y-4">
+          {carregandoRespostas ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary mr-3" />
+              <span className="text-muted-foreground text-sm">Buscando respostas...</span>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+                <Users className="h-6 w-6 text-primary" />
+                <div>
+                  <p className="text-2xl font-bold text-primary">{totalRespostas ?? 0}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {totalRespostas === 1 ? 'resposta recebida' : 'respostas recebidas'}
+                  </p>
+                </div>
+              </div>
+
+              <a
+                href={`https://docs.google.com/forms/d/${formIdRespostas}/viewanalytics`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-2 px-4 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Ver análise completa no Google Forms
+              </a>
+            </div>
+          )}
+        </div>
+      </Modal>
+
       {/* Modal IA */}
       <Modal
         isOpen={showModalIA}

@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 
 const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/make-server-7f151d2a`;
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 const getSupabaseClient = async () => supabase;
 

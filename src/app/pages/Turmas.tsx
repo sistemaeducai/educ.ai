@@ -115,11 +115,7 @@ export default function Turmas() {
   const handleCriarTurma = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novaTurmaData.nome || !novaTurmaData.serie || !novaTurmaData.disciplina) {
-      toast({
-        title: 'Campos obrigatórios',
-        description: 'Por favor, preencha o nome, série e disciplina.',
-        variant: 'warning'
-      });
+      toast.warning('Campos obrigatórios', 'Por favor, preencha o nome, série e disciplina.');
       return;
     }
 
@@ -133,11 +129,7 @@ export default function Turmas() {
         professor_id: usuario?.id || '',
         total_alunos: 0
       });
-      toast({
-        title: 'Turma criada!',
-        description: 'A nova turma foi registrada com sucesso.',
-        variant: 'success'
-      });
+      toast.success('Turma criada!', 'A nova turma foi registrada com sucesso.');
       setShowModalCriar(false);
       setNovaTurmaData({
         nome: '',
@@ -146,11 +138,7 @@ export default function Turmas() {
         ano_letivo: new Date().getFullYear().toString()
       });
     } catch (err: any) {
-      toast({
-        title: 'Erro ao criar turma',
-        description: err.message || 'Ocorreu um erro ao criar a turma.',
-        variant: 'destructive'
-      });
+      toast.error('Erro ao criar turma', err.message || 'Ocorreu um erro ao criar a turma.');
     } finally {
       setLoadingCriar(false);
     }
@@ -159,17 +147,9 @@ export default function Turmas() {
   const handleDeletarTurma = async (id: string) => {
     try {
       await excluirTurma(id);
-      toast({
-        title: 'Turma excluída',
-        description: 'A turma foi removida com sucesso',
-        variant: 'success',
-      });
+      toast.success('Turma excluída', 'A turma foi removida com sucesso');
     } catch (err: any) {
-      toast({
-        title: 'Erro ao excluir turma',
-        description: err.message || 'Não foi possível excluir a turma.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao excluir turma', err.message || 'Não foi possível excluir a turma.');
     }
     setConfirmModal({ isOpen: false });
   };
@@ -267,74 +247,42 @@ export default function Turmas() {
     }));
     
     exportToCSV(dataToExport, 'turmas');
-    toast({
-      title: 'Exportado com sucesso!',
-      description: `${dataToExport.length} turmas exportadas para CSV`,
-      variant: 'success',
-    });
+    toast.success('Exportado com sucesso!', `${dataToExport.length} turmas exportadas para CSV`);
   };
 
   const handleDesativarTurma = (id: string) => {
-    toast({
-      title: 'Turma desativada',
-      description: 'A turma foi desativada com sucesso',
-      variant: 'success',
-    });
+    toast.success('Turma desativada', 'A turma foi desativada com sucesso');
     setConfirmModal({ isOpen: false });
   };
 
   const handleBulkAction = (action: 'ativar' | 'desativar') => {
-    toast({
-      title: `${selectedTurmas.length} turmas ${action === 'ativar' ? 'ativadas' : 'desativadas'}`,
-      description: 'As turmas selecionadas foram atualizadas',
-      variant: 'success',
-    });
+    toast.success(`${selectedTurmas.length} turmas ${action === 'ativar' ? 'ativadas' : 'desativadas'}`, 'As turmas selecionadas foram atualizadas');
     setSelectedTurmas([]);
     setConfirmModal({ isOpen: false });
   };
 
   const handleSincronizar = async () => {
     if (!googleConfigured) {
-      toast({
-        title: 'Google Classroom não configurado',
-        description: 'Configure as credenciais do Google nas configurações de administração',
-        variant: 'warning',
-      });
+      toast.warning('Google Classroom não configurado', 'Configure as credenciais do Google nas configurações de administração');
       return;
     }
 
     // Verificar token
     const temToken = await temTokenGoogleValido();
     if (!temToken) {
-      toast({
-        title: 'Erro de autenticação',
-        description: 'Você precisa fazer login com Google primeiro',
-        variant: 'warning',
-      });
+      toast.warning('Erro de autenticação', 'Você precisa fazer login com Google primeiro');
       return;
     }
 
     setLoadingSync(true);
-    toast({
-      title: 'Sincronizando...',
-      description: 'Buscando turmas do Google Classroom',
-      variant: 'default',
-    });
+    toast.info('Sincronizando...', 'Buscando turmas do Google Classroom');
 
     try {
       const result = await sincronizarTurmas();
-      toast({
-        title: 'Sincronização concluída!',
-        description: `${result.count} turmas importadas do Google Classroom`,
-        variant: 'success',
-      });
+      toast.success('Sincronização concluída!', `${result.count} turmas importadas do Google Classroom`);
     } catch (error: any) {
       console.error('[Turmas] Erro ao sincronizar:', error);
-      toast({
-        title: 'Erro ao sincronizar',
-        description: error.message || 'Ocorreu um erro ao sincronizar as turmas. Tente novamente.',
-        variant: 'destructive',
-      });
+      toast.error('Erro ao sincronizar', error.message || 'Ocorreu um erro ao sincronizar as turmas. Tente novamente.');
     } finally {
       setLoadingSync(false);
     }

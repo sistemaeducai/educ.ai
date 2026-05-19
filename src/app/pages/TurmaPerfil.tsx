@@ -113,10 +113,10 @@ export default function TurmaPerfil() {
   ];
 
   const estatisticas = [
-    { label: 'Média Geral', valor: '7.8', icon: TrendingUp, cor: 'text-success', bgCor: 'bg-success/10' },
-    { label: 'Frequência Média', valor: '92%', icon: UserCheck, cor: 'text-secondary', bgCor: 'bg-secondary/10' },
-    { label: 'Taxa de Entrega', valor: '85%', icon: ListChecks, cor: 'text-primary', bgCor: 'bg-primary/10' },
-    { label: 'Participação', valor: '78%', icon: Users, cor: 'text-warning', bgCor: 'bg-warning/10' },
+    { label: 'Média Geral', valor: '—', icon: TrendingUp, cor: 'text-success', bgCor: 'bg-success/10' },
+    { label: 'Frequência Média', valor: '—', icon: UserCheck, cor: 'text-secondary', bgCor: 'bg-secondary/10' },
+    { label: 'Taxa de Entrega', valor: '—', icon: ListChecks, cor: 'text-primary', bgCor: 'bg-primary/10' },
+    { label: 'Participação', valor: '—', icon: Users, cor: 'text-warning', bgCor: 'bg-warning/10' },
   ];
 
   return (

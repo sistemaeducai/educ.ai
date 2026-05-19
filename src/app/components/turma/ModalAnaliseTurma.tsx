@@ -1,3 +1,9 @@
+import { useState } from 'react';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
+import { Badge } from '../ui/Badge';
+import { Select } from '../ui/Select';
+import type { AnaliseTurmaResponse, SugerirIntervencoesResponse } from '../../services/openaiService';
 import {
   Sparkles,
   Loader2,

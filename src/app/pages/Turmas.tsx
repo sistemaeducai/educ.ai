@@ -910,6 +910,7 @@ export default function Turmas() {
         isOpen={showModalCriar}
         onClose={() => setShowModalCriar(false)}
         title="Criar Nova Turma"
+        description="Preencha as informações para criar uma nova turma."
       >
         <form onSubmit={handleCriarTurma} className="space-y-4">
           <Input
@@ -919,24 +920,29 @@ export default function Turmas() {
             value={novaTurmaData.nome}
             onChange={(e) => setNovaTurmaData({ ...novaTurmaData, nome: e.target.value })}
           />
-          <Input
-            label="Série / Ano Escolar"
-            required
-            placeholder="Ex: 7º Ano"
-            value={novaTurmaData.serie}
-            onChange={(e) => setNovaTurmaData({ ...novaTurmaData, serie: e.target.value })}
-          />
-          <Input
-            label="Disciplina"
-            required
-            placeholder="Ex: Ciências"
-            value={novaTurmaData.disciplina}
-            onChange={(e) => setNovaTurmaData({ ...novaTurmaData, disciplina: e.target.value })}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Série / Ano Escolar"
+              required
+              placeholder="Ex: 7º Ano"
+              value={novaTurmaData.serie}
+              onChange={(e) => setNovaTurmaData({ ...novaTurmaData, serie: e.target.value })}
+            />
+            <Input
+              label="Disciplina"
+              required
+              placeholder="Ex: Ciências"
+              value={novaTurmaData.disciplina}
+              onChange={(e) => setNovaTurmaData({ ...novaTurmaData, disciplina: e.target.value })}
+            />
+          </div>
           <Input
             label="Ano Letivo"
             required
-            placeholder="Ex: 2024"
+            type="number"
+            min={2020}
+            max={2099}
+            placeholder="Ex: 2026"
             value={novaTurmaData.ano_letivo}
             onChange={(e) => setNovaTurmaData({ ...novaTurmaData, ano_letivo: e.target.value })}
           />

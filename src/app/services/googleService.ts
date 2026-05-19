@@ -1,20 +1,8 @@
+import { supabase } from '../../lib/supabase';
+
 const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/make-server-7f151d2a`;
-const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-// Criar cliente Supabase para OAuth (criar apenas quando necessário)
-let supabaseClient: any = null;
-
-const getSupabaseClient = async () => {
-  if (!supabaseClient) {
-    // Importação dinâmica do Supabase
-    const { createClient } = await import('@supabase/supabase-js');
-    supabaseClient = createClient(
-      import.meta.env.VITE_SUPABASE_URL as string,
-      publicAnonKey
-    );
-  }
-  return supabaseClient;
-};
+const getSupabaseClient = async () => supabase;
 
 /**
  * Interface para turma do Google Classroom
@@ -260,11 +248,6 @@ export async function temTokenGoogleValido(): Promise<boolean> {
 const GOOGLE_SYNC_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-sync`;
 
 async function callGoogleSync(path: string, method: string, body?: any): Promise<Response> {
-  const { createClient } = await import('@supabase/supabase-js');
-  const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL as string,
-    import.meta.env.VITE_SUPABASE_ANON_KEY as string
-  );
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
 

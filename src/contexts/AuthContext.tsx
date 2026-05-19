@@ -4,7 +4,7 @@
  * Arquitetura: auth.users → usuarios → professores (modular)
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/database.types';
@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [usuario, setUsuario] = useState<UsuarioCompleto | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastSyncedToken = useRef<string | null>(null);
 
   const loadUsuario = async (userId: string) => {
     try {
@@ -147,38 +148,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             expiresAt
           ).catch(console.warn);
 
-          // Sincroniza Classroom + verifica Google Forms após login/vínculo Google
-          sincronizarParaSupabase(session.provider_token).then((result) => {
-            if (result.turmasSynced > 0) {
-              sonnerToast.success('Google Classroom sincronizado!', {
-                description: `${result.turmasSynced} turma${result.turmasSynced > 1 ? 's' : ''} e ${result.alunosSynced} aluno${result.alunosSynced !== 1 ? 's' : ''} importados.`,
-                duration: 6000,
-              });
-            } else {
-              sonnerToast.info('Nenhuma turma encontrada no Google Classroom', {
-                description: 'Deseja criar sua primeira turma?',
-                duration: 8000,
-                action: {
-                  label: 'Criar turma',
-                  onClick: () => { window.location.href = '/turmas'; },
-                },
-              });
-            }
-          }).catch(console.warn);
+          // Evita chamar sincronização duas vezes para o mesmo token (SIGNED_IN dispara múltiplas vezes)
+          if (lastSyncedToken.current !== session.provider_token) {
+            lastSyncedToken.current = session.provider_token;
 
-          // Verifica se o token tem escopos do Google Forms
-          fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${session.provider_token}`)
-            .then((r) => r.json())
-            .then((info) => {
-              const scopes: string = info.scope ?? '';
-              if (scopes.includes('forms')) {
-                sonnerToast.success('Google Forms conectado!', {
-                  description: 'Você pode criar e gerenciar formulários diretamente no EDUC.AI.',
-                  duration: 5000,
+            // Sincroniza Classroom + verifica Google Forms após login/vínculo Google
+            sincronizarParaSupabase(session.provider_token).then((result) => {
+              if (result.turmasSynced > 0) {
+                sonnerToast.success('Google Classroom sincronizado!', {
+                  description: `${result.turmasSynced} turma${result.turmasSynced > 1 ? 's' : ''} e ${result.alunosSynced} aluno${result.alunosSynced !== 1 ? 's' : ''} importados.`,
+                  duration: 6000,
                 });
               }
-            })
-            .catch(console.warn);
+              // Sem aviso quando turmasSynced === 0: o usuário pode simplesmente não ter turmas ainda
+            }).catch((err) => {
+              console.warn('[AuthContext] Erro ao sincronizar Classroom:', err);
+            });
+
+            // Verifica se o token tem escopos do Google Forms
+            fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${session.provider_token}`)
+              .then((r) => r.json())
+              .then((info) => {
+                const scopes: string = info.scope ?? '';
+                if (scopes.includes('forms')) {
+                  sonnerToast.success('Google Forms conectado!', {
+                    description: 'Você pode criar e gerenciar formulários diretamente no EDUC.AI.',
+                    duration: 5000,
+                  });
+                }
+              })
+              .catch(console.warn);
+          }
         }
       } else {
         setUsuario(null);

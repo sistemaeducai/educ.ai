@@ -73,6 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      if (!usuarioData) return;
+
       if (usuarioData.tipo_usuario === 'professor') {
         const { data: professorData, error: professorError } = await supabase
           .from('professores')
@@ -81,12 +83,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
 
         if (!professorError && professorData) {
-          setUsuario({ ...usuarioData, professorData });
+          setUsuario({ ...(usuarioData as Usuario), professorData });
         } else {
-          setUsuario(usuarioData);
+          setUsuario(usuarioData as Usuario);
         }
       } else {
-        setUsuario(usuarioData);
+        setUsuario(usuarioData as Usuario);
       }
     } catch (error) {
       console.error('[AuthContext] Erro ao carregar usuário:', error);
@@ -117,6 +119,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (session?.user) {
         loadUsuario(session.user.id);
+
+        // Sincroniza avatar_url do Google para a tabela usuarios
+        const picture =
+          session.user.user_metadata?.avatar_url ??
+          session.user.user_metadata?.picture ??
+          null;
+        if (picture) {
+          (supabase.from('usuarios') as any)
+            .update({ avatar_url: picture })
+            .eq('id', session.user.id)
+            .then(({ error }: { error: unknown }) => {
+              if (!error) {
+                setUsuario((prev) => (prev ? { ...prev, avatar_url: picture } : prev));
+              }
+            });
+        }
 
         // Persist Google tokens for cron sync when signing in via Google OAuth
         if (event === 'SIGNED_IN' && session.provider_token) {
@@ -174,10 +192,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const GOOGLE_SCOPES =
     'openid email profile' +
+    // Classroom — leitura
     ' https://www.googleapis.com/auth/classroom.courses.readonly' +
     ' https://www.googleapis.com/auth/classroom.rosters.readonly' +
+    ' https://www.googleapis.com/auth/classroom.announcements.readonly' +
+    ' https://www.googleapis.com/auth/classroom.student-submissions.students.readonly' +
+    // Classroom — escrita
     ' https://www.googleapis.com/auth/classroom.courses' +
+    ' https://www.googleapis.com/auth/classroom.rosters' +
+    ' https://www.googleapis.com/auth/classroom.announcements' +
+    ' https://www.googleapis.com/auth/classroom.coursework.me' +
+    ' https://www.googleapis.com/auth/classroom.coursework.students' +
+    // Classroom — perfis e responsáveis
+    ' https://www.googleapis.com/auth/classroom.profile.emails' +
+    ' https://www.googleapis.com/auth/classroom.profile.photos' +
+    ' https://www.googleapis.com/auth/classroom.guardianlinks.students' +
+    // Google Forms
     ' https://www.googleapis.com/auth/forms.body' +
+    ' https://www.googleapis.com/auth/forms.body.readonly' +
     ' https://www.googleapis.com/auth/forms.responses.readonly';
 
   const signInWithGoogle = async () => {

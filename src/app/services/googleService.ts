@@ -335,3 +335,353 @@ export async function registrarWebhookGoogle(
     return null;
   }
 }
+
+// ─── Tipos adicionais ─────────────────────────────────────────────────────────
+
+export interface GoogleAnuncio {
+  id: string;
+  courseId: string;
+  text: string;
+  state: string;
+  creationTime: string;
+  updateTime: string;
+  alternateLink: string;
+}
+
+export interface GoogleAtividade {
+  id: string;
+  courseId: string;
+  title: string;
+  description?: string;
+  workType: string;
+  state: string;
+  maxPoints?: number;
+  dueDate?: { year: number; month: number; day: number };
+  dueTime?: { hours: number; minutes: number };
+  alternateLink: string;
+  creationTime: string;
+}
+
+export interface GoogleEntrega {
+  id: string;
+  courseId: string;
+  courseWorkId: string;
+  userId: string;
+  state: string;
+  assignedGrade?: number;
+  draftGrade?: number;
+  late: boolean;
+  updateTime: string;
+}
+
+export interface GoogleResponsavel {
+  guardianId: string;
+  studentId: string;
+  guardianProfile: {
+    id: string;
+    name: { fullName: string };
+    emailAddress?: string;
+    photoUrl?: string;
+  };
+  invitedEmailAddress: string;
+}
+
+export interface GooglePerfilUsuario {
+  id: string;
+  name: { fullName: string };
+  emailAddress?: string;
+  photoUrl?: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const CLASSROOM_BASE = 'https://classroom.googleapis.com/v1';
+
+async function classroomFetch(
+  path: string,
+  method: string,
+  accessToken: string,
+  body?: unknown
+): Promise<Response> {
+  return fetch(`${CLASSROOM_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+async function resolverToken(accessToken?: string): Promise<string> {
+  const token = accessToken ?? (await obterAccessTokenGoogle());
+  if (!token) throw new Error('Token do Google não disponível. Faça login com Google primeiro.');
+  return token;
+}
+
+// ─── Alunos (rosters write) ───────────────────────────────────────────────────
+
+export async function adicionarAlunoTurma(
+  courseId: string,
+  userId: string,
+  accessToken?: string
+): Promise<void> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/students`, 'POST', token, { userId });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao adicionar aluno (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+}
+
+export async function removerAlunoTurma(
+  courseId: string,
+  userId: string,
+  accessToken?: string
+): Promise<void> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/students/${userId}`, 'DELETE', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao remover aluno (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+}
+
+export async function obterPerfilAluno(
+  userId: string,
+  accessToken?: string
+): Promise<GooglePerfilUsuario> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/userProfiles/${userId}`, 'GET', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao obter perfil (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  return res.json();
+}
+
+// ─── Anúncios ─────────────────────────────────────────────────────────────────
+
+export async function criarAnuncio(
+  courseId: string,
+  texto: string,
+  accessToken?: string
+): Promise<GoogleAnuncio> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/announcements`, 'POST', token, {
+    text: texto,
+    state: 'PUBLISHED',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao criar anúncio (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function listarAnuncios(
+  courseId: string,
+  accessToken?: string
+): Promise<GoogleAnuncio[]> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/announcements`, 'GET', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao listar anúncios (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.announcements ?? [];
+}
+
+// ─── Atividades (coursework) ──────────────────────────────────────────────────
+
+export interface NovaAtividade {
+  title: string;
+  description?: string;
+  maxPoints?: number;
+  dueDate?: { year: number; month: number; day: number };
+  dueTime?: { hours: number; minutes: number };
+}
+
+export async function criarAtividade(
+  courseId: string,
+  dados: NovaAtividade,
+  accessToken?: string
+): Promise<GoogleAtividade> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/courseWork`, 'POST', token, {
+    ...dados,
+    workType: 'ASSIGNMENT',
+    state: 'PUBLISHED',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao criar atividade (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function listarAtividades(
+  courseId: string,
+  accessToken?: string
+): Promise<GoogleAtividade[]> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/courseWork`, 'GET', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao listar atividades (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.courseWork ?? [];
+}
+
+export async function obterAtividade(
+  courseId: string,
+  courseWorkId: string,
+  accessToken?: string
+): Promise<GoogleAtividade> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/courseWork/${courseWorkId}`, 'GET', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao obter atividade (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function atualizarAtividade(
+  courseId: string,
+  courseWorkId: string,
+  dados: Partial<NovaAtividade>,
+  accessToken?: string
+): Promise<GoogleAtividade> {
+  const token = await resolverToken(accessToken);
+  const updateMask = Object.keys(dados).join(',');
+  const res = await classroomFetch(
+    `/courses/${courseId}/courseWork/${courseWorkId}?updateMask=${updateMask}`,
+    'PATCH',
+    token,
+    dados
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao atualizar atividade (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function excluirAtividade(
+  courseId: string,
+  courseWorkId: string,
+  accessToken?: string
+): Promise<void> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/courses/${courseId}/courseWork/${courseWorkId}`, 'DELETE', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao excluir atividade (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+}
+
+// ─── Entregas / Submissões ────────────────────────────────────────────────────
+
+export async function listarEntregas(
+  courseId: string,
+  courseWorkId: string,
+  accessToken?: string
+): Promise<GoogleEntrega[]> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(
+    `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions`,
+    'GET',
+    token
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao listar entregas (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.studentSubmissions ?? [];
+}
+
+export async function lancarNota(
+  courseId: string,
+  courseWorkId: string,
+  submissionId: string,
+  nota: number,
+  accessToken?: string
+): Promise<void> {
+  const token = await resolverToken(accessToken);
+
+  const patch = await classroomFetch(
+    `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}?updateMask=assignedGrade,draftGrade`,
+    'PATCH',
+    token,
+    { assignedGrade: nota, draftGrade: nota }
+  );
+  if (!patch.ok) {
+    const err = await patch.json().catch(() => ({}));
+    throw new Error(`Erro ao salvar nota (${patch.status}): ${err?.error?.message ?? patch.statusText}`);
+  }
+
+  const ret = await classroomFetch(
+    `/courses/${courseId}/courseWork/${courseWorkId}/studentSubmissions/${submissionId}:return`,
+    'POST',
+    token
+  );
+  if (!ret.ok) {
+    const err = await ret.json().catch(() => ({}));
+    throw new Error(`Erro ao devolver entrega (${ret.status}): ${err?.error?.message ?? ret.statusText}`);
+  }
+}
+
+// ─── Responsáveis (Guardian Links) ───────────────────────────────────────────
+
+export async function listarResponsaveis(
+  studentId: string,
+  accessToken?: string
+): Promise<GoogleResponsavel[]> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(`/userProfiles/${studentId}/guardians`, 'GET', token);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao listar responsáveis (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.guardians ?? [];
+}
+
+export async function convidarResponsavel(
+  studentId: string,
+  email: string,
+  accessToken?: string
+): Promise<void> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(
+    `/userProfiles/${studentId}/guardianInvitations`,
+    'POST',
+    token,
+    { invitedEmailAddress: email }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao convidar responsável (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+}
+
+export async function removerResponsavel(
+  studentId: string,
+  guardianId: string,
+  accessToken?: string
+): Promise<void> {
+  const token = await resolverToken(accessToken);
+  const res = await classroomFetch(
+    `/userProfiles/${studentId}/guardians/${guardianId}`,
+    'DELETE',
+    token
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Erro ao remover responsável (${res.status}): ${err?.error?.message ?? res.statusText}`);
+  }
+}

@@ -16,7 +16,6 @@ import {
   Search,
   Sparkles,
   Loader2,
-  TrendingUp,
   MessageSquare
 } from 'lucide-react';
 import { toast } from '../components/ui/Toast';
@@ -24,6 +23,11 @@ import { analisarDesempenho, gerarComentarioBoletim } from '../services/openaiSe
 import { useConfig } from '../../contexts/ConfigContext';
 import { supabase } from '../../lib/supabase';
 import { BoletimPrint } from '../components/relatorios/BoletimPrint';
+import {
+  enviarBoletimPorEmail,
+  enviarBoletinsEmLote,
+  buscarStatusEnvios,
+} from '../../services/boletim-email.service';
 
 interface Boletim {
   id: string;
@@ -59,6 +63,7 @@ export default function RelatoriosEBoletins() {
 
   const [boletins, setBoletins] = useState<Boletim[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingEnvio, setLoadingEnvio] = useState<string | 'lote' | null>(null);
 
   useEffect(() => {
     async function carregarDadosReais() {
@@ -149,7 +154,15 @@ export default function RelatoriosEBoletins() {
           });
         }
 
-        setBoletins(listBoletins);
+        // Carrega status de envio persistido
+        const alunoIds = listBoletins.map(b => b.id);
+        const statusMap = await buscarStatusEnvios(user.id, alunoIds);
+        const listComStatus = listBoletins.map(b => ({
+          ...b,
+          statusEnvio: (statusMap[b.id] ?? 'Pendente') as Boletim['statusEnvio'],
+        }));
+
+        setBoletins(listComStatus);
       } catch (err) {
         console.error('Erro ao carregar boletins reais:', err);
       } finally {
@@ -195,9 +208,45 @@ export default function RelatoriosEBoletins() {
 
 
 
-  const handleEnviarEmLote = () => {
+  const handleEnviarEmLote = async () => {
     const pendentes = boletinsFiltrados.filter(b => b.statusEnvio === 'Pendente');
-    toast.success(`${pendentes.length} boletins enviados!`, 'Os boletins foram enviados por email');
+    if (pendentes.length === 0) {
+      toast.info('Nenhum pendente', 'Todos os boletins já foram enviados');
+      return;
+    }
+    setLoadingEnvio('lote');
+    toast.info('Enviando boletins...', `Enviando ${pendentes.length} boletins por e-mail`);
+    try {
+      const resultados = await enviarBoletinsEmLote(
+        pendentes.map(b => ({
+          aluno_id: b.id,
+          boletim: {
+            aluno: b.aluno, turma: b.turma, periodo: b.periodo,
+            mediaFinal: b.mediaFinal, frequencia: b.frequencia,
+            participacao: b.participacao, notasPorBimestre: b.notasPorBimestre,
+            observacao: b.observacao,
+          },
+        }))
+      );
+      const ok = resultados.filter(r => r.success).length;
+      const fail = resultados.filter(r => !r.success).length;
+      setBoletins(prev =>
+        prev.map(b => {
+          const r = resultados.find(x => x.aluno_id === b.id);
+          if (!r) return b;
+          return { ...b, statusEnvio: r.success ? 'Enviado' : 'Erro' };
+        })
+      );
+      if (fail === 0) {
+        toast.success(`${ok} boletins enviados!`, 'Todos os e-mails foram entregues com sucesso');
+      } else {
+        toast.warning(`${ok} enviados, ${fail} com erro`, 'Verifique os alunos sem e-mail cadastrado');
+      }
+    } catch (err: any) {
+      toast.error('Erro ao enviar', err.message ?? 'Tente novamente');
+    } finally {
+      setLoadingEnvio(null);
+    }
   };
 
   const handleGerarPDF = (boletim: Boletim) => {
@@ -205,8 +254,32 @@ export default function RelatoriosEBoletins() {
     setModalPrint(true);
   };
 
-  const handleEnviarIndividual = (boletimId: string) => {
-    toast.success('Boletim enviado!', 'O email foi enviado ao responsável');
+  const handleEnviarIndividual = async (boletim: Boletim) => {
+    if (boletim.statusEnvio === 'Enviado') return;
+    setLoadingEnvio(boletim.id);
+    try {
+      const resultado = await enviarBoletimPorEmail(boletim.id, {
+        aluno: boletim.aluno, turma: boletim.turma, periodo: boletim.periodo,
+        mediaFinal: boletim.mediaFinal, frequencia: boletim.frequencia,
+        participacao: boletim.participacao, notasPorBimestre: boletim.notasPorBimestre,
+        observacao: boletim.observacao,
+      });
+      if (resultado.success) {
+        setBoletins(prev =>
+          prev.map(b => b.id === boletim.id ? { ...b, statusEnvio: 'Enviado' } : b)
+        );
+        toast.success('Boletim enviado!', `E-mail entregue para ${resultado.email}`);
+      } else {
+        setBoletins(prev =>
+          prev.map(b => b.id === boletim.id ? { ...b, statusEnvio: 'Erro' } : b)
+        );
+        toast.error('Falha no envio', resultado.error ?? 'Verifique o e-mail do aluno');
+      }
+    } catch (err: any) {
+      toast.error('Erro ao enviar', err.message ?? 'Tente novamente');
+    } finally {
+      setLoadingEnvio(null);
+    }
   };
 
   const handleAnalisarDesempenho = async (boletim: Boletim) => {
@@ -309,11 +382,14 @@ export default function RelatoriosEBoletins() {
           >
             Exportar Tudo
           </Button>
-          <Button 
-            icon={<Send className="h-4 w-4" />}
+          <Button
+            icon={loadingEnvio === 'lote'
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Send className="h-4 w-4" />}
             onClick={handleEnviarEmLote}
+            disabled={loadingEnvio === 'lote'}
           >
-            Enviar Pendentes
+            {loadingEnvio === 'lote' ? 'Enviando...' : 'Enviar Pendentes'}
           </Button>
         </div>
       </div>
@@ -473,16 +549,19 @@ export default function RelatoriosEBoletins() {
                           <Download className="h-4 w-4 text-foreground" />
                         </button>
                         <button
-                          onClick={() => handleEnviarIndividual(boletim.id)}
+                          onClick={() => handleEnviarIndividual(boletim)}
                           className="p-2 hover:bg-muted rounded-lg transition-colors"
                           title="Enviar por Email"
-                          disabled={boletim.statusEnvio === 'Enviado'}
+                          disabled={boletim.statusEnvio === 'Enviado' || loadingEnvio === boletim.id}
                         >
-                          <Mail className={`h-4 w-4 ${
-                            boletim.statusEnvio === 'Enviado' 
-                              ? 'text-muted-foreground' 
-                              : 'text-foreground'
-                          }`} />
+                          {loadingEnvio === boletim.id
+                            ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            : <Mail className={`h-4 w-4 ${
+                                boletim.statusEnvio === 'Enviado'
+                                  ? 'text-muted-foreground'
+                                  : 'text-foreground'
+                              }`} />
+                          }
                         </button>
                         {openaiConfigured && (
                           <>

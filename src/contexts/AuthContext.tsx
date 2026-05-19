@@ -24,6 +24,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  linkGoogleAccount: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ data: unknown; error: AuthError | null }>;
   signUpWithEmail: (email: string, password: string, nome: string, tipoUsuario?: 'professor' | 'coordenador') => Promise<{ data: unknown; error: AuthError | null }>;
   signOut: () => Promise<void>;
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             expiresAt
           ).catch(console.warn);
 
-          // Pull turmas e alunos do Google Classroom automaticamente no login
+          // Sincroniza Classroom + verifica Google Forms após login/vínculo Google
           sincronizarParaSupabase(session.provider_token).then((result) => {
             if (result.turmasSynced > 0) {
               sonnerToast.success('Google Classroom sincronizado!', {
@@ -146,6 +147,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
             }
           }).catch(console.warn);
+
+          // Verifica se o token tem escopos do Google Forms
+          fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${session.provider_token}`)
+            .then((r) => r.json())
+            .then((info) => {
+              const scopes: string = info.scope ?? '';
+              if (scopes.includes('forms')) {
+                sonnerToast.success('Google Forms conectado!', {
+                  description: 'Você pode criar e gerenciar formulários diretamente no EDUC.AI.',
+                  duration: 5000,
+                });
+              }
+            })
+            .catch(console.warn);
         }
       } else {
         setUsuario(null);
@@ -157,29 +172,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const GOOGLE_SCOPES =
+    'openid email profile' +
+    ' https://www.googleapis.com/auth/classroom.courses.readonly' +
+    ' https://www.googleapis.com/auth/classroom.rosters.readonly' +
+    ' https://www.googleapis.com/auth/classroom.courses' +
+    ' https://www.googleapis.com/auth/forms.body' +
+    ' https://www.googleapis.com/auth/forms.responses.readonly';
+
   const signInWithGoogle = async () => {
     try {
       setLoading(true);
 
-      const redirectUrl = `${window.location.origin}/callback`;
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
+          redirectTo: `${window.location.origin}/callback`,
           skipBrowserRedirect: false,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-          scopes:
-            'openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly https://www.googleapis.com/auth/classroom.courses',
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+          scopes: GOOGLE_SCOPES,
         },
       });
 
       if (error) throw error;
     } catch (error) {
       console.error('[AuthContext] Erro no login com Google:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Vincula conta Google a uma sessão de email/senha já existente
+  const linkGoogleAccount = async () => {
+    try {
+      setLoading(true);
+
+      const { error } = await supabase.auth.linkIdentity({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/callback`,
+          scopes: GOOGLE_SCOPES,
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+        },
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('[AuthContext] Erro ao vincular Google:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -281,6 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     loading,
     signInWithGoogle,
+    linkGoogleAccount,
     signInWithEmail,
     signUpWithEmail,
     signOut,

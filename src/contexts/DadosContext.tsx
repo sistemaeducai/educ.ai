@@ -249,18 +249,37 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   const adicionarAluno = useCallback(async (aluno: AlunoInsert): Promise<Aluno> => {
     const novo = await AlunosService.criar(aluno);
     setAlunos(prev => [...prev, novo]);
+    
+    // Se o aluno novo estiver ativo, incrementa o contador da turma localmente
+    if (novo.status === 'ativo') {
+      setTurmas(prev => prev.map(t => t.id === novo.turma_id ? { ...t, total_alunos: (t.total_alunos || 0) + 1 } : t));
+    }
+    
     return novo;
   }, []);
 
   const atualizarAluno = useCallback(async (id: string, dados: AlunoUpdate): Promise<void> => {
+    const alunoAntigo = alunos.find(a => a.id === id);
     const atualizado = await AlunosService.atualizar(id, dados);
     setAlunos(prev => prev.map(a => a.id === id ? atualizado : a));
-  }, []);
+    
+    // Se o status mudou, atualiza o contador local da turma
+    if (alunoAntigo && alunoAntigo.status !== atualizado.status) {
+      const diff = atualizado.status === 'ativo' ? 1 : -1;
+      setTurmas(prev => prev.map(t => t.id === atualizado.turma_id ? { ...t, total_alunos: Math.max(0, (t.total_alunos || 0) + diff) } : t));
+    }
+  }, [alunos]);
 
   const excluirAluno = useCallback(async (id: string, turmaId: string): Promise<void> => {
+    const alunoAExcluir = alunos.find(a => a.id === id);
     await AlunosService.deletar(id, turmaId);
     setAlunos(prev => prev.filter(a => a.id !== id));
-  }, []);
+    
+    // Se o aluno deletado estava ativo, decrementa o contador da turma localmente
+    if (alunoAExcluir && alunoAExcluir.status === 'ativo') {
+      setTurmas(prev => prev.map(t => t.id === turmaId ? { ...t, total_alunos: Math.max(0, (t.total_alunos || 0) - 1) } : t));
+    }
+  }, [alunos]);
 
   // ============ MARCOS ============
 

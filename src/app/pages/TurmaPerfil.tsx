@@ -5,7 +5,7 @@ import {
   Users, Calendar, BookOpen, ListChecks, FileText,
   TrendingUp, UserCheck, UserX,
   Search, Plus, ArrowLeft, Loader2, Sparkles, ArrowUpDown,
-  Pencil, Trash2, GripVertical,
+  Pencil, Trash2, GripVertical, Upload, FileDown, AlertCircle, CheckCircle2,
 } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -22,6 +22,7 @@ import { ModalAnaliseTurma } from '../components/turma/ModalAnaliseTurma';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDados } from '../../contexts/DadosContext';
+import { AlunosService } from '../../services/alunos.service';
 import type { Database } from '../../lib/database.types';
 type Marco = Database['public']['Tables']['marcos']['Row'];
 import { analisarTurma, AnaliseTurmaResponse, sugerirIntervencoes, SugerirIntervencoesResponse } from '../services/openaiService';
@@ -252,6 +253,13 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
+  // CSV import
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showModalCSV, setShowModalCSV] = useState(false);
+  const [previewAlunos, setPreviewAlunos] = useState<ReturnType<typeof AlunosService.parsearCSV>['dados']>([]);
+  const [errosCSV, setErrosCSV] = useState<string[]>([]);
+  const [importando, setImportando] = useState(false);
+
   const [form, setForm] = useState({
     nome: '',
     matricula: '',
@@ -294,6 +302,49 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
     if (sortField === field) setSortOrder(p => p === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortOrder('asc'); }
   };
+
+  function baixarTemplate() {
+    const csv = 'nome,matricula,email,responsavel,telefone,status\nJoão da Silva,2024001,joao@escola.com,Maria da Silva,(11) 99999-0001,ativo\nAna Souza,2024002,,,,ativo';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'modelo_importacao_alunos.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleArquivoCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const texto = ev.target?.result as string;
+      const resultado = AlunosService.parsearCSV(texto, turmaId);
+      setPreviewAlunos(resultado.dados);
+      setErrosCSV(resultado.erros);
+      setShowModalCSV(true);
+    };
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  }
+
+  async function handleImportarCSV() {
+    if (previewAlunos.length === 0) return;
+    try {
+      setImportando(true);
+      await AlunosService.importarLote(previewAlunos);
+      await carregarAlunos(turmaId);
+      toast.success('Importação concluída!', `${previewAlunos.length} aluno(s) importado(s) com sucesso`);
+      setShowModalCSV(false);
+      setPreviewAlunos([]);
+      setErrosCSV([]);
+    } catch (err: any) {
+      toast.error('Erro na importação', err.message || 'Tente novamente');
+    } finally {
+      setImportando(false);
+    }
+  }
 
   function abrirCriar() {
     setEditando(null);
@@ -428,9 +479,26 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Lista de Alunos ({alunosFiltrados.length})</CardTitle>
-            <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={abrirCriar}>
-              Adicionar Aluno
-            </Button>
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleArquivoCSV}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                icon={<Upload className="h-4 w-4" />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Importar CSV
+              </Button>
+              <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={abrirCriar}>
+                Adicionar Aluno
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -633,6 +701,90 @@ function AlunosTab({ turmaId }: { turmaId: string }) {
         confirmText="Remover"
         variant="danger"
       />
+
+      {/* Modal Importar CSV */}
+      <Modal isOpen={showModalCSV} onClose={() => { setShowModalCSV(false); setPreviewAlunos([]); setErrosCSV([]); }} showCloseButton>
+        <div className="p-6 space-y-5 w-full max-w-2xl">
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Importar Alunos via CSV</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Revise os dados antes de confirmar a importação.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between bg-muted/40 rounded-lg p-3">
+            <div className="text-sm text-muted-foreground">
+              Formato esperado: <span className="font-mono text-xs">nome, matricula, email, responsavel, telefone, status</span>
+            </div>
+            <Button size="sm" variant="ghost" icon={<FileDown className="h-4 w-4" />} onClick={baixarTemplate}>
+              Baixar Modelo
+            </Button>
+          </div>
+
+          {errosCSV.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-destructive flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4" /> {errosCSV.length} linha(s) com erro (serão ignoradas)
+              </p>
+              <ul className="text-xs text-destructive/80 space-y-0.5 max-h-24 overflow-y-auto bg-destructive/5 rounded p-2">
+                {errosCSV.map((e, i) => <li key={i}>{e}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {previewAlunos.length > 0 ? (
+            <div>
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5 mb-2">
+                <CheckCircle2 className="h-4 w-4 text-success" />
+                {previewAlunos.length} aluno(s) prontos para importação
+              </p>
+              <div className="overflow-x-auto max-h-60 overflow-y-auto rounded border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-foreground uppercase">Nome</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-foreground uppercase">Matrícula</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-foreground uppercase">E-mail</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-foreground uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {previewAlunos.map((a, i) => (
+                      <tr key={i} className="hover:bg-muted/30">
+                        <td className="px-3 py-2">{a.nome}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{a.matricula}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{a.email || '—'}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant={a.status === 'ativo' ? 'success' : 'default'}>
+                            {a.status === 'ativo' ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground text-sm">
+              Nenhum dado válido encontrado no arquivo.
+            </div>
+          )}
+
+          <div className="flex gap-2 justify-end pt-1">
+            <Button variant="outline" onClick={() => { setShowModalCSV(false); setPreviewAlunos([]); setErrosCSV([]); }} disabled={importando}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleImportarCSV}
+              disabled={previewAlunos.length === 0 || importando}
+              icon={importando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            >
+              {importando ? 'Importando...' : `Importar ${previewAlunos.length} Aluno(s)`}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

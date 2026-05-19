@@ -122,6 +122,59 @@ export class AlunosService {
   }
 
   /**
+   * Fazer o parse de texto CSV e retornar dados prontos para inserção.
+   * Colunas esperadas: nome*, matricula*, email, responsavel, telefone, status
+   */
+  static parsearCSV(
+    texto: string,
+    turmaId: string
+  ): { dados: AlunoInsert[]; erros: string[] } {
+    const linhas = texto.split(/\r?\n/).filter(l => l.trim());
+    if (linhas.length < 2) {
+      return { dados: [], erros: ['O arquivo está vazio ou não possui linhas de dados.'] };
+    }
+
+    const cabecalho = linhas[0].split(',').map(c => c.trim().toLowerCase().replace(/['"]/g, ''));
+    const idxNome = cabecalho.indexOf('nome');
+    const idxMatricula = cabecalho.indexOf('matricula');
+    const idxEmail = cabecalho.indexOf('email');
+    const idxResponsavel = cabecalho.indexOf('responsavel');
+    const idxTelefone = cabecalho.indexOf('telefone');
+    const idxStatus = cabecalho.indexOf('status');
+
+    if (idxNome === -1 || idxMatricula === -1) {
+      return { dados: [], erros: ['O CSV deve conter as colunas "nome" e "matricula".'] };
+    }
+
+    const dados: AlunoInsert[] = [];
+    const erros: string[] = [];
+
+    for (let i = 1; i < linhas.length; i++) {
+      const cols = linhas[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+      const nome = cols[idxNome] ?? '';
+      const matricula = cols[idxMatricula] ?? '';
+
+      if (!nome) { erros.push(`Linha ${i + 1}: campo "nome" está vazio.`); continue; }
+      if (!matricula) { erros.push(`Linha ${i + 1}: campo "matricula" está vazio.`); continue; }
+
+      const statusVal = idxStatus !== -1 ? cols[idxStatus]?.toLowerCase() : '';
+      const status = statusVal === 'inativo' ? 'inativo' : 'ativo';
+
+      dados.push({
+        turma_id: turmaId,
+        nome,
+        matricula,
+        email: idxEmail !== -1 && cols[idxEmail] ? cols[idxEmail] : null,
+        responsavel: idxResponsavel !== -1 && cols[idxResponsavel] ? cols[idxResponsavel] : null,
+        telefone: idxTelefone !== -1 && cols[idxTelefone] ? cols[idxTelefone] : null,
+        status,
+      });
+    }
+
+    return { dados, erros };
+  }
+
+  /**
    * Importar múltiplos alunos de uma vez
    */
   static async importarLote(alunos: AlunoInsert[]): Promise<Aluno[]> {

@@ -217,7 +217,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "EDUC.AI <boletim@educai.app>",
+        from: "EDUC.AI <onboarding@resend.dev>",
         to: [aluno.email],
         subject: `Boletim Escolar — ${boletim.aluno} | ${boletim.periodo}`,
         html,

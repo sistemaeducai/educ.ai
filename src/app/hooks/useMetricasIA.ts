@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/make-server-7f151d2a`;
 const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+import { supabase } from '../../lib/supabase';
+
 export interface EstatisticasIA {
   professor_id?: string;
   nome?: string;
@@ -38,7 +40,8 @@ export function useMetricasIA() {
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem('supabase_token');
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       if (!token) {
         throw new Error('Não autorizado');
       }

@@ -111,10 +111,7 @@ export default function AdminUsuarios() {
 
   const handleAprovar = async (id: string) => {
     setProcessando(id);
-    const { error } = await db
-      .from('usuarios')
-      .update({ status_aprovacao: 'aprovado', ativo: true })
-      .eq('id', id);
+    const { error } = await supabase.rpc('aprovar_usuario', { p_user_id: id });
 
     if (error) {
       toast.error('Erro ao aprovar usuário');
@@ -133,10 +130,7 @@ export default function AdminUsuarios() {
 
   const handleRejeitar = async (id: string) => {
     setProcessando(id);
-    const { error } = await db
-      .from('usuarios')
-      .update({ status_aprovacao: 'rejeitado', ativo: false })
-      .eq('id', id);
+    const { error } = await supabase.rpc('rejeitar_usuario', { p_user_id: id });
 
     if (error) {
       toast.error('Erro ao rejeitar usuário');
@@ -155,10 +149,7 @@ export default function AdminUsuarios() {
 
   const handleToggleAtivo = async (id: string, ativoAtual: boolean) => {
     setProcessando(id);
-    const { error } = await db
-      .from('usuarios')
-      .update({ ativo: !ativoAtual })
-      .eq('id', id);
+    const { error } = await supabase.rpc('alterar_ativo_usuario', { p_user_id: id, p_ativo: !ativoAtual });
 
     if (error) {
       toast.error('Erro ao atualizar usuário');

@@ -254,6 +254,169 @@ export default function RelatoriosEBoletins() {
     setModalPrint(true);
   };
 
+  const handlePrintConsolidado = () => {
+    if (boletinsFiltrados.length === 0) return;
+
+    const janela = window.open('', '_blank', 'width=800,height=900');
+    if (!janela) return;
+
+    let totalConteudo = '';
+
+    boletinsFiltrados.forEach((boletim, index) => {
+      const mediaColor =
+        boletim.mediaFinal >= 7 ? '#16a34a' : boletim.mediaFinal >= 5 ? '#d97706' : '#dc2626';
+      const situacao =
+        boletim.mediaFinal >= 7 ? 'Aprovado' : boletim.mediaFinal >= 5 ? 'Em Recuperação' : 'Reprovado';
+      const situacaoClass =
+        boletim.mediaFinal >= 7 ? 'badge-success' : boletim.mediaFinal >= 5 ? 'badge-warning' : 'badge-danger';
+      const bimestres = ['1º Bim', '2º Bim', '3º Bim', '4º Bim'];
+
+      totalConteudo += `
+        <div class="boletim-pagina" style="${index > 0 ? 'page-break-before: always; margin-top: 40px;' : ''}">
+          <div class="header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1e40af; padding-bottom: 16px; margin-bottom: 24px;">
+            <div>
+              <h1 style="font-size: 22px; font-weight: 800; color: #1e40af; margin: 0;">EDUC.AI</h1>
+              <div style="font-size: 13px; color: #6b7280; margin-top: 4px;">
+                Ano Letivo ${new Date().getFullYear()} — Boletim Escolar
+              </div>
+            </div>
+            <div class="escola" style="font-size: 13px; color: #6b7280; text-align: right;">
+              <div style="font-weight: 700;">${boletim.turma}</div>
+              <div>Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
+            </div>
+          </div>
+
+          <div class="section" style="margin-bottom: 20px;">
+            <h2 style="font-size: 16px; font-weight: 700; color: #374151; margin-bottom: 6px;">Dados do Aluno</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tbody>
+                <tr>
+                  <td style="width: 30%; font-weight: 600; border: 1px solid #e5e7eb; padding: 8px 12px;">Nome</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px;">${boletim.aluno}</td>
+                  <td style="width: 20%; font-weight: 600; border: 1px solid #e5e7eb; padding: 8px 12px;">Turma</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px;">${boletim.turma}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; border: 1px solid #e5e7eb; padding: 8px 12px;">Período</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px;">${boletim.periodo}</td>
+                  <td style="font-weight: 600; border: 1px solid #e5e7eb; padding: 8px 12px;">Professor(a)</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px;">Professor(a)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="section" style="margin-bottom: 20px;">
+            <h2 style="font-size: 16px; font-weight: 700; color: #374151; margin-bottom: 6px;">Desempenho Acadêmico</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <thead>
+                <tr>
+                  ${bimestres.map((b) => `<th style="background: #1e40af; color: white; padding: 8px 12px; text-align: center;">${b}</th>`).join('')}
+                  <th style="background: #1e3a8a; color: white; padding: 8px 12px; text-align: center;">Média Final</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  ${boletim.notasPorBimestre.map((n) => {
+                    const cor = n >= 7 ? '#16a34a' : n >= 5 ? '#d97706' : '#dc2626';
+                    return `
+                      <td style="border: 1px solid #e5e7eb; padding: 8px 12px; text-align: center; font-weight: 700; color: ${cor}; font-size: 15px;">
+                        ${n > 0 ? n.toFixed(1) : '—'}
+                      </td>
+                    `;
+                  }).join('')}
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px; text-align: center; font-weight: 800; font-size: 18px; color: ${mediaColor}; background: #f0f9ff;">
+                    ${boletim.mediaFinal.toFixed(1)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="section" style="margin-bottom: 20px;">
+            <h2 style="font-size: 16px; font-weight: 700; color: #374151; margin-bottom: 6px;">Frequência e Participação</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tbody>
+                <tr>
+                  <td style="font-weight: 600; width: 30%; border: 1px solid #e5e7eb; padding: 8px 12px;">Frequência</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px;">${boletim.frequencia}%</td>
+                  <td style="font-weight: 600; width: 30%; border: 1px solid #e5e7eb; padding: 8px 12px;">Participação</td>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px 12px;">${boletim.participacao}%</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; border: 1px solid #e5e7eb; padding: 8px 12px;">Situação Final</td>
+                  <td colspan="3" style="border: 1px solid #e5e7eb; padding: 8px 12px;">
+                    <span class="badge ${situacaoClass}" style="display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; ${
+                      situacaoClass === 'badge-success' ? 'background: #dcfce7; color: #16a34a;' :
+                      situacaoClass === 'badge-warning' ? 'background: #fef3c7; color: #d97706;' :
+                      'background: #fee2e2; color: #dc2626;'
+                    }">${situacao}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          ${boletim.observacao ? `
+            <div class="section" style="margin-bottom: 20px;">
+              <h2 style="font-size: 16px; font-weight: 700; color: #374151; margin-bottom: 6px;">Observações Pedagógicas</h2>
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tbody>
+                  <tr>
+                    <td style="line-height: 1.6; border: 1px solid #e5e7eb; padding: 8px 12px;">${boletim.observacao}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+
+          <div class="assinatura" style="margin-top: 40px; display: flex; justify-content: space-around; font-size: 13px;">
+            <div class="assinatura-linha" style="width: 200px; border-top: 1px solid #374151; padding-top: 4px; text-align: center;">
+              <div>Data: ___/___/______</div>
+            </div>
+            <div class="assinatura-linha" style="width: 200px; border-top: 1px solid #374151; padding-top: 4px; text-align: center;">
+              Professor(a)
+              <div style="font-size: 11px; color: #6b7280;">Professor(a)</div>
+            </div>
+            <div class="assinatura-linha" style="width: 200px; border-top: 1px solid #374151; padding-top: 4px; text-align: center;">
+              <div style="font-size: 11px; color: #6b7280;">Assinatura do Responsável</div>
+            </div>
+          </div>
+
+          <div class="footer" style="margin-top: 32px; border-top: 1px solid #e5e7eb; padding-top: 16px; font-size: 12px; color: #9ca3af; display: flex; justify-content: space-between;">
+            <span>Documento gerado pelo sistema EDUC.AI</span>
+            <span>${new Date().toLocaleString('pt-BR')}</span>
+          </div>
+        </div>
+      `;
+    });
+
+    janela.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Boletins Consolidados — EDUC.AI</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; color: #111; background: #fff; padding: 32px; }
+          @media print { 
+            body { padding: 0; }
+            .boletim-pagina { page-break-after: always; }
+          }
+        </style>
+      </head>
+      <body>${totalConteudo}</body>
+      </html>
+    `);
+    janela.document.close();
+    janela.focus();
+    setTimeout(() => {
+      janela.print();
+      janela.close();
+    }, 400);
+  };
+
   const handleEnviarIndividual = async (boletim: Boletim) => {
     if (boletim.statusEnvio === 'Enviado') return;
     setLoadingEnvio(boletim.id);
@@ -379,8 +542,10 @@ export default function RelatoriosEBoletins() {
           <Button 
             variant="outline"
             icon={<Download className="h-4 w-4" />}
+            onClick={handlePrintConsolidado}
+            disabled={boletinsFiltrados.length === 0}
           >
-            Exportar Tudo
+            Exportar PDF (Consolidado)
           </Button>
           <Button
             icon={loadingEnvio === 'lote'

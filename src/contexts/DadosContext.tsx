@@ -159,6 +159,45 @@ export function DadosProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Sincronização em tempo real (Supabase Realtime) para Mensagens
+  useEffect(() => {
+    if (!professorId) return;
+
+    const channel = supabase
+      .channel('mensagens_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mensagens',
+          filter: `professor_id=eq.${professorId}`
+        },
+        (payload) => {
+          console.log('[REALTIME] Evento de mensagem recebido:', payload);
+          if (payload.eventType === 'INSERT') {
+            const nova = payload.new as Mensagem;
+            setMensagens(prev => {
+              // Evita duplicados
+              if (prev.some(m => m.id === nova.id)) return prev;
+              return [nova, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const atualizada = payload.new as Mensagem;
+            setMensagens(prev => prev.map(m => m.id === atualizada.id ? atualizada : m));
+          } else if (payload.eventType === 'DELETE') {
+            const excluida = payload.old as { id: string };
+            setMensagens(prev => prev.filter(m => m.id !== excluida.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [professorId]);
+
   // ============ TURMAS ============
 
   const carregarTurmas = useCallback(async () => {

@@ -4,7 +4,7 @@ Sistema de gestão educacional com IA integrada para professores. Permite criar 
 
 ## Links do Projeto
 - **Repositório GitHub:** [github.com/sistemaeducai/educ.ai](https://github.com/sistemaeducai/educ.ai)
-- **Sistema Online (Produção):** *[Inserir URL do Sistema Online]*
+- **Sistema Online (Produção):** *Disponível em breve / Configurável no deploy (ex: Vercel, Netlify ou Easypanel)*
 
 ## Stack
 
@@ -73,7 +73,21 @@ Em **Authentication → URL Configuration**:
 5. Em **OAuth consent screen → Test users**, adicione seu email
 6. No painel Supabase → **Authentication → Providers → Google**, cole Client ID e Client Secret
 
-### 5. Configurar OpenAI (opcional)
+### 5. Configurar Segredos das Edge Functions (Supabase)
+
+Para que o envio automatizado de boletins por e-mail e as APIs funcionem na nuvem do Supabase, você precisa cadastrar as credenciais de backend como segredos das Edge Functions:
+
+```bash
+# Define a chave secreta da API da Resend para o envio de e-mails
+supabase secrets set RESEND_API_KEY=sua_chave_resend_aqui
+
+# Define o segredo do cliente do Google para a sincronização de Classroom
+supabase secrets set GOOGLE_CLIENT_SECRET=seu_google_client_secret_aqui
+```
+
+> Certifique-se de que sua CLI local do Supabase esteja vinculada e autenticada com seu projeto na nuvem para executar estes comandos com sucesso.
+
+### 6. Configurar OpenAI (opcional)
 
 A chave OpenAI é gerenciada pelo painel admin do sistema (não precisa estar no `.env`).
 

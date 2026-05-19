@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0E3B37" />
+      <stop offset="100%" stop-color="#16A085" />
+    </linearGradient>
+    
+    <!-- AI Spark Glow -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Spark Gradient -->
+    <linearGradient id="spark-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#A3E635" />
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Base with smooth corners -->
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg-grad)" />
+
+  <!-- Inner border highlights for premium glass/depth look -->
+  <rect x="34" y="34" width="444" height="444" rx="106" fill="none" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="4" />
+
+  <!-- Styled Book / Pages (representing EDUCATION) -->
+  <g transform="translate(256, 270) scale(1.15)">
+    <!-- Left page curve -->
+    <path d="M -90,-10 C -50,-35 -20,-10 -5,-5 L -5,65 C -20,60 -50,35 -90,60 Z" fill="#FFFFFF" fill-opacity="0.95" />
+    <!-- Right page curve -->
+    <path d="M 90,-10 C 50,-35 20,-10 5,-5 L 5,65 C 20,60 50,35 90,60 Z" fill="#FFFFFF" fill-opacity="0.95" />
+    <!-- Book spine center line shadow -->
+    <path d="M 0,-8 L 0,66" stroke="#16A085" stroke-width="4" stroke-linecap="round" opacity="0.3" />
+  </g>
+
+  <!-- Glowing AI Spark/Star in the upper center (representing AI) -->
+  <path d="M 256,100 C 256,145 220,170 175,170 C 220,170 256,195 256,240 C 256,195 292,170 337,170 C 292,170 256,145 256,100 Z" 
+        fill="url(#spark-grad)" 
+        filter="url(#glow)" />
+        
+  <!-- A smaller companion spark for depth and dynamism -->
+  <path d="M 325,120 C 325,140 310,150 290,150 C 310,150 325,160 325,180 C 325,160 340,150 360,150 C 340,150 325,140 325,120 Z" 
+        fill="#FFFFFF" 
+        fill-opacity="0.8" />
+</svg>

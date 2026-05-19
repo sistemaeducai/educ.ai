@@ -5,6 +5,12 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
+import {
+  criarTurmaGoogleClassroom,
+  atualizarTurmaGoogleClassroom,
+  arquivarTurmaGoogleClassroom,
+} from '../app/services/googleService';
 
 // Serviços Supabase
 import { TurmasService } from '../services/turmas.service';
@@ -120,6 +126,7 @@ export function DadosProvider({ children }: { children: ReactNode }) {
 
   const [carregando, setCarregando] = useState(false);
   const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [marcos, setMarcos] = useState<Marco[]>([]);
   const [planos, setPlanos] = useState<PlanoAula[]>([]);
@@ -139,6 +146,19 @@ export function DadosProvider({ children }: { children: ReactNode }) {
     }
   }, [professorId]);
 
+  // Manter googleToken sincronizado com a sessão Supabase
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setGoogleToken(session?.provider_token ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setGoogleToken(session?.provider_token ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   // ============ TURMAS ============
 
   const carregarTurmas = useCallback(async () => {
@@ -157,18 +177,56 @@ export function DadosProvider({ children }: { children: ReactNode }) {
   const adicionarTurma = useCallback(async (turma: TurmaInsert): Promise<Turma> => {
     const nova = await TurmasService.criar(turma);
     setTurmas(prev => [nova, ...prev]);
+
+    // Best-effort: create course in Google Classroom and store the returned ID
+    if (googleToken && nova.nome) {
+      criarTurmaGoogleClassroom(
+        {
+          nome: nova.nome,
+          serie: nova.serie ?? '',
+          disciplina: nova.disciplina ?? nova.nome,
+        },
+        googleToken
+      ).then(async (result) => {
+        if (result?.googleId) {
+          const atualizada = await TurmasService.atualizar(nova.id, {
+            google_classroom_id: result.googleId,
+          });
+          setTurmas(prev => prev.map(t => t.id === nova.id ? atualizada : t));
+        }
+      }).catch(console.warn);
+    }
+
     return nova;
-  }, []);
+  }, [googleToken]);
 
   const atualizarTurma = useCallback(async (id: string, dados: TurmaUpdate): Promise<void> => {
     const atualizada = await TurmasService.atualizar(id, dados);
     setTurmas(prev => prev.map(t => t.id === id ? atualizada : t));
-  }, []);
+
+    // Best-effort: sync name/serie changes to Google Classroom
+    if (googleToken && atualizada.google_classroom_id) {
+      atualizarTurmaGoogleClassroom(
+        atualizada.google_classroom_id,
+        {
+          nome: dados.nome ?? undefined,
+          serie: dados.serie ?? undefined,
+        },
+        googleToken
+      ).catch(console.warn);
+    }
+  }, [googleToken]);
 
   const excluirTurma = useCallback(async (id: string): Promise<void> => {
+    const turma = turmas.find(t => t.id === id);
     await TurmasService.deletar(id);
     setTurmas(prev => prev.filter(t => t.id !== id));
-  }, []);
+
+    // Best-effort: archive course in Google Classroom instead of hard-deleting
+    if (googleToken && turma?.google_classroom_id) {
+      arquivarTurmaGoogleClassroom(turma.google_classroom_id, googleToken).catch(console.warn);
+    }
+  }, [googleToken, turmas]);
 
   const obterTurma = useCallback((id: string): Turma | undefined => {
     return turmas.find(t => t.id === id);

@@ -8,6 +8,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/database.types';
+import { salvarTokenGoogle } from '../app/services/googleService';
 
 type Usuario = Database['public']['Tables']['usuarios']['Row'];
 type Professor = Database['public']['Tables']['professores']['Row'];
@@ -108,12 +109,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.user) {
         loadUsuario(session.user.id);
+
+        // Persist Google tokens for cron sync when signing in via Google OAuth
+        if (event === 'SIGNED_IN' && session.provider_token) {
+          const expiresAt = session.expires_at
+            ? new Date(session.expires_at * 1000).toISOString()
+            : null;
+          salvarTokenGoogle(
+            session.provider_token,
+            session.provider_refresh_token ?? null,
+            expiresAt
+          ).catch(console.warn);
+        }
       } else {
         setUsuario(null);
       }
@@ -140,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             prompt: 'consent',
           },
           scopes:
-            'openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly',
+            'openid email profile https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly https://www.googleapis.com/auth/classroom.courses',
         },
       });
 

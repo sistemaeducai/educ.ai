@@ -254,3 +254,101 @@ export async function temTokenGoogleValido(): Promise<boolean> {
   const token = await obterAccessTokenGoogle();
   return token !== null;
 }
+
+// ─── Bidirectional sync helpers ──────────────────────────────────────────────
+
+const GOOGLE_SYNC_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-sync`;
+
+async function callGoogleSync(path: string, method: string, body?: any): Promise<Response> {
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    import.meta.env.VITE_SUPABASE_URL as string,
+    import.meta.env.VITE_SUPABASE_ANON_KEY as string
+  );
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  return fetch(`${GOOGLE_SYNC_URL}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+export async function criarTurmaGoogleClassroom(
+  turma: { nome: string; serie: string; disciplina: string },
+  accessToken: string
+): Promise<{ googleId: string } | null> {
+  try {
+    const res = await callGoogleSync('/turma/criar', 'POST', { accessToken, ...turma });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function atualizarTurmaGoogleClassroom(
+  googleId: string,
+  dados: { nome?: string; serie?: string },
+  accessToken: string
+): Promise<boolean> {
+  try {
+    const res = await callGoogleSync('/turma/atualizar', 'PATCH', { accessToken, googleId, ...dados });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function arquivarTurmaGoogleClassroom(
+  googleId: string,
+  accessToken: string
+): Promise<boolean> {
+  try {
+    const res = await callGoogleSync('/turma/arquivar', 'PATCH', { accessToken, googleId });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function salvarTokenGoogle(
+  accessToken: string,
+  refreshToken: string | null,
+  expiresAt: string | null
+): Promise<void> {
+  try {
+    await callGoogleSync('/token', 'POST', { accessToken, refreshToken, expiresAt });
+  } catch {
+    // best-effort
+  }
+}
+
+export async function sincronizarParaSupabase(accessToken: string): Promise<{
+  turmasSynced: number;
+  alunosSynced: number;
+}> {
+  const res = await callGoogleSync('/pull', 'POST', { accessToken });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? 'Erro ao sincronizar');
+  }
+  return res.json();
+}
+
+export async function registrarWebhookGoogle(
+  accessToken: string,
+  courseId?: string
+): Promise<{ registrationId: string; expiry: string } | null> {
+  try {
+    const res = await callGoogleSync('/webhook/registrar', 'POST', { accessToken, courseId });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}

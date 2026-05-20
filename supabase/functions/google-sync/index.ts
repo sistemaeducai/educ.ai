@@ -243,8 +243,33 @@ app.post("/google-sync/pull", async (c) => {
   const user = await getUser(c);
   if (!user) return c.json({ error: "Não autorizado" }, 401);
 
-  const { accessToken } = await c.req.json();
-  if (!accessToken) return c.json({ error: "accessToken obrigatório" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  let accessToken: string = body.accessToken ?? "";
+
+  // provider_token não persiste após refresh de página — usar token armazenado como fallback
+  if (!accessToken) {
+    const supabase = getSupabase();
+    const { data: stored } = await supabase
+      .from("google_tokens")
+      .select("access_token, expires_at")
+      .eq("professor_id", user.id)
+      .single();
+
+    if (!stored) {
+      return c.json({ error: "Token do Google não encontrado. Faça login com Google primeiro." }, 400);
+    }
+
+    const expiresAt = new Date(stored.expires_at ?? 0).getTime();
+    if (!stored.access_token || expiresAt < Date.now() + 5 * 60_000) {
+      accessToken = (await refreshAccessToken(user.id)) ?? "";
+    } else {
+      accessToken = stored.access_token;
+    }
+
+    if (!accessToken) {
+      return c.json({ error: "Token do Google expirado. Reconecte sua conta Google nas configurações." }, 400);
+    }
+  }
 
   try {
     const result = await pullTurmasEAlunos(user.id, accessToken);

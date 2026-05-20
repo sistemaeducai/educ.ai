@@ -312,11 +312,12 @@ export async function salvarTokenGoogle(
   }
 }
 
-export async function sincronizarParaSupabase(accessToken: string): Promise<{
+export async function sincronizarParaSupabase(accessToken?: string | null): Promise<{
   turmasSynced: number;
   alunosSynced: number;
 }> {
-  const res = await callGoogleSync('/pull', 'POST', { accessToken });
+  const body = accessToken ? { accessToken } : {};
+  const res = await callGoogleSync('/pull', 'POST', body);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as any).error ?? 'Erro ao sincronizar');

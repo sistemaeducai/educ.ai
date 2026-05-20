@@ -36,7 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { useConfig } from '../../contexts/ConfigContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDados } from '../../contexts/DadosContext';
-import { sincronizarParaSupabase, obterAccessTokenGoogle, temTokenGoogleValido } from '../services/googleService';
+import { sincronizarParaSupabase, obterAccessTokenGoogle } from '../services/googleService';
 import { priorizarTurmas, PriorizarTurmasResponse } from '../services/openaiService';
 
 interface Turma {
@@ -267,22 +267,13 @@ export default function Turmas() {
       return;
     }
 
-    // Verificar token
-    const temToken = await temTokenGoogleValido();
-    if (!temToken) {
-      toast.warning('Erro de autenticação', 'Você precisa fazer login com Google primeiro');
-      return;
-    }
-
     setLoadingSync(true);
     toast.info('Sincronizando...', 'Buscando turmas do Google Classroom');
 
     try {
+      // provider_token só existe em memória no login OAuth; após refresh de página é null.
+      // Enviar quando disponível; o servidor usa o token armazenado como fallback.
       const token = await obterAccessTokenGoogle();
-      if (!token) {
-        toast.warning('Erro de autenticação', 'Token do Google não disponível. Faça login com Google novamente.');
-        return;
-      }
       const result = await sincronizarParaSupabase(token);
       await carregarTurmas();
       if (result.turmasSynced > 0) {
@@ -292,7 +283,12 @@ export default function Turmas() {
       }
     } catch (error: any) {
       console.error('[Turmas] Erro ao sincronizar:', error);
-      toast.error('Erro ao sincronizar', error.message || 'Ocorreu um erro ao sincronizar as turmas. Tente novamente.');
+      const msg = error.message || '';
+      if (msg.includes('Token do Google') || msg.includes('Reconecte')) {
+        toast.error('Login Google necessário', 'Reconecte sua conta Google em Administração > Integrações.');
+      } else {
+        toast.error('Erro ao sincronizar', msg || 'Ocorreu um erro ao sincronizar as turmas. Tente novamente.');
+      }
     } finally {
       setLoadingSync(false);
     }
